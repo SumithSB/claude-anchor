@@ -100,6 +100,11 @@ Planned, not yet supported:
 
 Ideas and pull requests are welcome in [Issues](https://github.com/SumithSB/claude-anchor/issues).
 
+## Acknowledgements
+
+- [claude-swap](https://github.com/realiti4/claude-swap) by realiti4, the account switcher that inspired this project. Claude Anchor takes a different approach (one config folder per account instead of swapping credentials), but the idea started there.
+- [brag](https://github.com/latent-spaces/brag) by Latent Spaces, used to make the launch video above.
+
 ## License
 
 [MIT](LICENSE)
