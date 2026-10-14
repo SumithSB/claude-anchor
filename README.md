@@ -12,11 +12,30 @@ A macOS menu bar app that routes Claude Code to the right Claude account for eac
 
 Dark mode, settings and first-run screens are in [`docs/`](docs/).
 
+Unofficial and not affiliated with Anthropic. Free, MIT licensed, macOS 14+.
+
 ## Install
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh | bash
 ```
+
+Or with Homebrew:
+
+```sh
+brew install --cask sumithsb/tap/claude-anchor
+```
+
+Prefer to read the script first:
+
+```sh
+curl -fsSLo install.sh https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh
+less install.sh && bash install.sh
+```
+
+**What it touches, in short:** it reads Claude Code's logins from your Keychain only to show your limits, and sends them only to `api.anthropic.com`. It never copies or stores them. There's no telemetry or analytics. On disk it writes to `~/.claude-anchor`, one line in `~/.zshrc`, and one setting in your VS Code and Cursor settings (backed up first). Your existing `~/.claude` is never changed. The full list is under [Files it touches](#files-it-touches).
+
+The app is ad-hoc signed, not notarized by Apple. The installer and the Homebrew cask clear the download quarantine so it opens normally. If you download the zip by hand, macOS blocks the first launch: open System Settings > Privacy & Security and click Open Anyway.
 
 The installer downloads the latest release and verifies its SHA-256 checksum. If no release is available it builds from source. It installs the app to `/Applications` (or `~/Applications`), adds one line to `~/.zshrc` (skip with `CLAUDE_ANCHOR_NO_SHELL=1`) and launches the app.
 
