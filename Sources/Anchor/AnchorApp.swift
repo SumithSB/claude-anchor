@@ -8,6 +8,10 @@ import AppKit
             MainActor.assumeIsolated { Snapshot.run(prefix: a[i + 1]) }
             exit(0)
         }
+        if let i = a.firstIndex(of: "--brag-assets"), a.indices.contains(i + 1) {
+            MainActor.assumeIsolated { BragAssets.run(dir: a[i + 1]) }
+            exit(0)
+        }
         AnchorApp.main()
     }
 }
@@ -34,11 +38,11 @@ extension AppModel {
 
 /// Anchor glyph inside a ring whose sweep is the 5h utilization. Template, except red at 90% and up.
 @MainActor enum MenuBarIcon {
-    static func image(percent: Double?) -> NSImage {
+    static func image(percent: Double?, ink: Color = .black, scale: CGFloat = 2) -> NSImage {
         let hot = (percent ?? 0) >= 90
-        let ring = hot ? Color.signalRed : Color.black
+        let ring = hot ? Color.signalRed : ink
         let view = ZStack {
-            AnchorGlyph().stroke(Color.black, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+            AnchorGlyph().stroke(ink, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
                 .frame(width: 10, height: 11)
             if let p = percent {
                 Circle().stroke(ring.opacity(0.25), lineWidth: 1.5)
@@ -49,7 +53,7 @@ extension AppModel {
         }
         .padding(1).frame(width: 18, height: 18)
         let r = ImageRenderer(content: view)
-        r.scale = 2
+        r.scale = scale
         let img = r.nsImage ?? NSImage(systemSymbolName: "anchor", accessibilityDescription: "Claude Anchor") ?? NSImage()
         img.isTemplate = !hot
         return img
@@ -69,12 +73,14 @@ extension AppModel {
         shoot(six, dark: true, to: prefix + "-six-dark.png")
         shoot(empty(), dark: false, to: prefix + "-empty.png")
         shoot(signIn(), dark: false, to: prefix + "-signin.png")
+        shoot(six, dark: false, to: prefix + "-accounts.png", view: AnyView(AccountsPane()))
+        shoot(six, dark: false, to: prefix + "-rules.png", view: AnyView(RulesPane()))
+        shoot(three, dark: false, to: prefix + "-settings.png", view: AnyView(SettingsPane()))
     }
 
-    static func shoot(_ model: AppModel, dark: Bool, to path: String) {
+    static func shoot(_ model: AppModel, dark: Bool, to path: String, view: AnyView? = nil) {
         let scheme: ColorScheme = dark ? .dark : .light
-        let host = NSHostingView(rootView: PopoverView().environment(model).environment(\.colorScheme, scheme)
-            .background(Color(nsColor: .windowBackgroundColor)))
+        let host = NSHostingView(rootView: (view ?? AnyView(PopoverView())).environment(model).environment(\.colorScheme, scheme).environment(\.snapshotMode, true))
         let size = NSSize(width: 340, height: host.fittingSize.height)
         let win = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
         win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -133,9 +139,13 @@ extension AppModel {
             UsageRow(id: "primary", label: "Work", accountID: "primary", tokens: 1_240_000, outputTokens: 180_000, cost: 14.2),
             UsageRow(id: "client", label: "Client", accountID: "client", tokens: 640_000, outputTokens: 90_000, cost: 7.9),
             UsageRow(id: "personal", label: "Personal", accountID: "personal", tokens: 212_000, outputTokens: 30_000, cost: 2.35),
+        ] + (six ? [
             UsageRow(id: "studio", label: "Studio", accountID: "studio", tokens: 48_000, outputTokens: 6_000, cost: 0.61),
             UsageRow(id: "side", label: "Side project", accountID: "side", tokens: 900, outputTokens: 100, cost: 0.02),
-        ]
+        ] : [])
+        m.config.rules = [Rule(path: Paths.home + "/code/website", accountID: "primary"),
+                          Rule(path: Paths.home + "/code/client-app", accountID: "client", allowOverflow: true),
+                          Rule(path: Paths.home + "/notes", accountID: "personal")]
         m.lastSession = (cwd: Paths.home + "/code/website", accountID: "primary", file: "/x/s.jsonl")
         return m
     }
@@ -157,5 +167,55 @@ struct AnchorGlyph: Shape {
             p.addLine(to: CGPoint(x: dx + sgn * w * 0.16, y: r.minY + h * 0.56))
         }
         return p
+    }
+}
+
+// MARK: brag assets (`--brag-assets <dir>`): real UI renders for the launch video, demo data only
+
+@MainActor enum BragAssets {
+    static func png(_ path: String, _ rep: NSBitmapImageRep) { try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path)) }
+
+    static func run(dir: String) {
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.accessory)
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let m = Snapshot.fake(six: false)
+        Snapshot.shoot(m, dark: false, to: dir + "/popover-work.png")
+        let hot = Snapshot.fake(six: false)
+        hot.limits["primary"] = Limits(fiveHour: LimitWindow(percent: 92, resetsAt: Date().addingTimeInterval(6000)),
+                                       weekly: LimitWindow(percent: 31, resetsAt: Date().addingTimeInterval(2 * 86_400)), fetchedAt: Date())
+        hot.banner = "Switched to Personal. Work hit 92% of its 5h limit."; hot.overflowSuggestion = "personal"
+        Snapshot.shoot(hot, dark: false, to: dir + "/popover-limit.png")
+        Snapshot.shoot(m, dark: false, to: dir + "/rules.png", view: AnyView(RulesPane()))
+        // dial alone, uniform sweep of lever positions 0.12...0.88 (Work centre is 1/6, Personal 5/6), dark, transparent, 4x
+        let N = 200
+        for k in 0..<N {
+            dial(m, pos: 0.12 + 0.76 * Double(k) / Double(N - 1), to: String(format: "%@/dial-%03d.png", dir, k))
+        }
+        for p in [0, 25, 50, 75, 100] {
+            icon(MenuBarIcon.image(percent: Double(p), ink: .white, scale: 4), dir + "/menubar-icon-\(p).png")
+        }
+        icon(MenuBarIcon.image(percent: 100, ink: .white, scale: 4), dir + "/menubar-icon-red.png")
+    }
+
+    static func icon(_ img: NSImage, _ path: String) {
+        if let t = img.tiffRepresentation, let r = NSBitmapImageRep(data: t) { png(path, r) }
+    }
+
+    static func dial(_ m: AppModel, pos: Double, to path: String) {
+        let host = NSHostingView(rootView: TelegraphView(previewPos: pos).environment(m).environment(\.colorScheme, .dark))
+        let size = NSSize(width: 308, height: 156), S = 4
+        let win = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        win.appearance = NSAppearance(named: .darkAqua); win.isOpaque = false; win.backgroundColor = .clear
+        win.contentView = host; host.frame = NSRect(origin: .zero, size: size)
+        win.orderFrontRegardless()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.06))
+        host.layoutSubtreeIfNeeded()
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * S, pixelsHigh: Int(size.height) * S, bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
+        rep.size = size
+        host.cacheDisplay(in: host.bounds, to: rep)
+        png(path, rep)
+        win.orderOut(nil)
     }
 }

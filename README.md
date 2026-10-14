@@ -2,9 +2,15 @@
 
 A macOS menu bar app that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account.
 
-![Claude Anchor popover](docs/popover-light.png)
+[![Watch the 20-second tour](docs/brag.jpg)](docs/brag.mp4)
 
-A dark variant is at `docs/popover-dark.png`.
+*Watch the 20-second tour (click the image).*
+
+| Menu | Accounts | Folder rules |
+|---|---|---|
+| ![Popover](docs/popover-light.png) | ![Accounts](docs/popover-accounts.png) | ![Folder rules](docs/popover-rules.png) |
+
+Dark mode, settings and first-run screens are in [`docs/`](docs/).
 
 ## Install
 

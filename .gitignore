@@ -5,3 +5,4 @@ dist/
 .vscode/
 *.xcuserstate
 .swiftpm/
+brag-output/

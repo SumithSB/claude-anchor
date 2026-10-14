@@ -5,9 +5,11 @@ import AppKit
 @MainActor struct TelegraphView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var focused: Bool
     @State private var dragPos: Double?      // 0...1 along the arc while dragging
     @State private var lastSector = -1
+    var previewPos: Double? = nil            // video renders only: fixes the lever position (the hot label follows)
 
     private let W: CGFloat = 308, H: CGFloat = 156, R: CGFloat = 145
     private let C = CGPoint(x: 154, y: 148)
@@ -16,7 +18,7 @@ import AppKit
     private var n: Int { max(accounts.count, 1) }
     private var activeIdx: Int { accounts.firstIndex { $0.id == model.config.defaultID } ?? 0 }
     private func center(_ i: Int) -> Double { (Double(i) + 0.5) / Double(n) }
-    private var pos: Double { dragPos ?? center(activeIdx) }
+    private var pos: Double { previewPos ?? dragPos ?? center(activeIdx) }
     private var hot: Int { min(n - 1, max(0, Int(pos * Double(n)))) }   // sector under the lever
 
     // Sectors sweep 15°–165° so end labels clear the baseline rim.
@@ -59,11 +61,11 @@ import AppKit
             let major = k % 5 == 0
             var t = Path(); t.move(to: pt(Double(k) / Double(n * 5), R - (major ? 15 : 9)))
             t.addLine(to: pt(Double(k) / Double(n * 5), R - 5))
-            ctx.stroke(t, with: .color(ink.opacity(major ? 0.45 : 0.2)), lineWidth: major ? 1 : 0.75)
+            ctx.stroke(t, with: .color(ink.opacity(contrast == .increased ? (major ? 0.8 : 0.5) : (major ? 0.45 : 0.2))), lineWidth: major ? 1 : 0.75)
         }
         var d = Path(); d.move(to: pt(center(hot), R - 18)); d.addLine(to: pt(center(hot), R - 5))
         ctx.stroke(d, with: .color(.brass), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-        ctx.stroke(face, with: .color(.brass), lineWidth: focused ? 3.5 : 2)
+        ctx.stroke(face, with: .color(.brass), lineWidth: focused || contrast == .increased ? 3.5 : 2)
     }
 
     private func label(_ i: Int, _ a: Account) -> some View {
@@ -97,7 +99,7 @@ import AppKit
                 .position(C)
         }
         .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1.5)
-        .animation(dragPos == nil && !reduceMotion ? .spring(response: 0.35, dampingFraction: 0.7) : nil, value: pos)
+        .animation(dragPos == nil && previewPos == nil && !reduceMotion ? .spring(response: 0.35, dampingFraction: 0.7) : nil, value: pos)
         .allowsHitTesting(false)
     }
 

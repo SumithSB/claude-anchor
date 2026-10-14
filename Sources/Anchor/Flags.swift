@@ -110,17 +110,31 @@ enum FlagArt {
 
 // MARK: flag picker and accounts pane
 
+@MainActor private struct FlagCell: View {
+    let flag: SignalFlag
+    let selected: Bool
+    let dimmed: Bool
+    let pick: () -> Void
+    @State private var hover = false
+    var body: some View {
+        Button(action: pick) {
+            FlagView(flag: flag, size: 20).padding(4)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hover ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? Color.brass : .clear, lineWidth: 1.5))
+                .opacity(dimmed ? 0.35 : 1)
+        }
+        .buttonStyle(.plain).onHover { hover = $0 }
+        .accessibilityLabel("Flag \(flag.letter)").accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 @MainActor struct FlagGrid: View {
     @Binding var flag: SignalFlag
     var used: Set<SignalFlag> = []
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.fixed(44)), count: 6), spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(46)), count: 6), spacing: 6) {
             ForEach(SignalFlag.allCases) { f in
-                Button { flag = f } label: {
-                    FlagView(flag: f, size: 20).padding(3)
-                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(f == flag ? Color.brass : .clear, lineWidth: 1.5))
-                        .opacity(used.contains(f) && f != flag ? 0.35 : 1)
-                }.buttonStyle(.plain).accessibilityLabel("Flag \(f.letter)")
+                FlagCell(flag: f, selected: f == flag, dimmed: used.contains(f) && f != flag) { flag = f }
             }
         }.padding(12)
     }
@@ -141,19 +155,19 @@ enum FlagArt {
     private var used: Set<SignalFlag> { Set(model.accounts.map(\.flag)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            PaneHeader(title: "Accounts")
-            List {
+        PaneScaffold(title: "Accounts", height: 480) {
+            Section {
                 ForEach(model.accounts) { row($0) }.onMove { model.moveAccounts(fromOffsets: $0, toOffset: $1) }
-            }.listStyle(.plain)
-            Divider()
-            if adding { addForm } else {
-                Button("Add account") {
-                    newName = ""; newFlag = SignalFlag.allCases.first { !used.contains($0) } ?? .a; adding = true
-                }.padding(12).controlSize(.small)
+            } footer: {
+                if !adding {
+                    Button {
+                        newName = ""; newFlag = SignalFlag.allCases.first { !used.contains($0) } ?? .a; adding = true
+                    } label: { Label("Add account", systemImage: "plus") }
+                    .buttonStyle(.borderless).padding(.top, 4)
+                }
             }
+            if adding { Section { addForm } }
         }
-        .frame(width: 340, height: 440)
         .sheet(item: $removing) { RemoveSheet(account: $0) }
         .confirmationDialog("Sign out of Claude Code?", isPresented: $signOut) {
             Button("Sign out", role: .destructive) { model.signOutPrimary() }
@@ -168,46 +182,46 @@ enum FlagArt {
                     TextField("Name", text: $draft).textFieldStyle(.roundedBorder).controlSize(.small)
                         .onSubmit { model.rename(a.id, to: draft); editing = nil }
                 } else {
-                    Text(a.name).font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text(a.name).font(.body.weight(.semibold)).lineLimit(1).truncationMode(.tail)
                         .onTapGesture(count: 2) { draft = a.name; editing = a.id }
                 }
                 if model.signingIn.contains(a.id) {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text("Finish signing in in your browser").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("Finish signing in in your browser").font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                         Button("Cancel") { model.cancelSignIn(a.id) }.controlSize(.mini)
                     }
                 } else if a.pending {
                     HStack(spacing: 6) {
-                        Text("Not signed in").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("Not signed in").font(.subheadline).foregroundStyle(.secondary)
                         Button("Sign in") { model.signIn(a.id) }.controlSize(.mini)
                     }
-                } else if let e = a.email { Text(e).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                } else if let e = a.email { Text(e).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
             }
-            Spacer()
-            Menu {
+            Spacer(minLength: 6)
+            if let p = a.plan, !a.pending { Text(p.capitalized).font(.subheadline).foregroundStyle(.secondary).fixedSize() }
+            RowMenu(label: "Options for \(a.name)") {
                 Button("Rename") { draft = a.name; editing = a.id }
                 Button("Change flag") { flagFor = a.id }
                 Button("Sign in again") { model.signIn(a.id) }
                 Divider()
                 if a.isPrimary { Button("Sign out") { signOut = true } }
                 else { Button("Remove \(a.name)", role: .destructive) { removing = a } }
-            } label: { Image(systemName: "ellipsis") }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Options for \(a.name)")
+            }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .popover(isPresented: Binding(get: { flagFor == a.id }, set: { if !$0 { flagFor = nil } })) {
             FlagGrid(flag: Binding(get: { a.flag }, set: { model.setFlag(a.id, $0); flagFor = nil }), used: used)
         }
     }
 
     private var addForm: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 TextField("Account name", text: $newName).textFieldStyle(.roundedBorder)
                 Button { showNewFlags = true } label: { FlagView(flag: newFlag, size: 16) }.buttonStyle(.borderless)
                     .popover(isPresented: $showNewFlags) { FlagGrid(flag: Binding(get: { newFlag }, set: { newFlag = $0; showNewFlags = false }), used: used) }
-                    .accessibilityLabel("Flag \(newFlag.letter)")
+                    .accessibilityLabel("Flag \(newFlag.letter), change")
             }
             HStack {
                 Button("Cancel") { adding = false }
@@ -217,7 +231,7 @@ enum FlagArt {
                     adding = false
                 }.disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
             }
-        }.controlSize(.small).padding(12)
+        }.controlSize(.small)
     }
 }
 
