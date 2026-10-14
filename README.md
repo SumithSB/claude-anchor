@@ -2,9 +2,9 @@
 
 A macOS menu bar app that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account.
 
-[![Watch the 20-second tour](docs/brag.jpg)](docs/brag.mp4)
+![Claude Anchor in 20 seconds](docs/brag.gif)
 
-*Watch the 20-second tour (click the image).*
+*With sound: [download the video](https://github.com/SumithSB/claude-anchor/raw/main/docs/brag.mp4).*
 
 | Menu | Accounts | Folder rules |
 |---|---|---|
