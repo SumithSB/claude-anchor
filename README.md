@@ -53,7 +53,8 @@ scripts/build.sh --install
 - **Auto-switch:** when the active account nears its limit, the default moves to one with headroom.
 - **Continue on another account:** pick a conversation and continue it in Terminal under a different account.
 - **Usage:** by account, project and model. The dollar figure marked "≈" is the API price of the tokens, not your bill.
-- In the gear menu, turn on "Use in VS Code and Cursor" for editor routing. New conversations follow the dial and folder rules; running ones keep their account.
+- VS Code and Cursor are routed automatically: on first launch the app sets their Claude process wrapper (your settings are backed up first). New conversations follow the dial and folder rules; running ones keep their account. Turn it off in Settings > "Use in VS Code and Cursor".
+- To see which account a session uses, run `/status` in it, or check `$CLAUDE_ANCHOR_ACCOUNT`. Don't go by `~/.claude.json`: it always belongs to your primary account.
 
 Bypass the shell function with `CLAUDE_ANCHOR_OFF=1` or by exporting `CLAUDE_CONFIG_DIR`. `anchor-which` prints what the current folder resolves to.
 
@@ -68,7 +69,7 @@ No telemetry. The only network traffic is to the usage endpoint on `api.anthropi
 | `~/.claude-anchor/` | config, routes, usage history, shell shim, editor wrapper |
 | `~/.claude-anchor/accounts/` | one config dir per extra account |
 | `~/.zshrc` | one marked line, added by the installer |
-| VS Code / Cursor `settings.json` | `claudeCode.claudeProcessWrapper`, only while the toggle is on (backup: `settings.json.anchor-backup`) |
+| VS Code / Cursor `settings.json` | `claudeCode.claudeProcessWrapper`, set on first launch, removed when you turn it off (backup: `settings.json.anchor-backup`) |
 | `~/.claude/` | read only (transcripts); settings, skills and plugins are symlinked from it |
 | Keychain | read only, Claude Code's own items |
 

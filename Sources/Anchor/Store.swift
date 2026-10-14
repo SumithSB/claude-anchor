@@ -121,6 +121,13 @@ extension AppModel {
         load()
         installShellFiles()
         refreshEnvironment()
+        // Editors are on by default: the first launch that finds VS Code or Cursor routes them too.
+        // The choice is remembered, so turning it off in Settings sticks.
+        if live, config.editorIntegration == nil,
+           Self.editorSettingsFiles.contains(where: { FileManager.default.fileExists(atPath: $0) }) {
+            banner = setEditorIntegration(true)
+                ?? "VS Code and Cursor now use Claude Anchor for new conversations. You can turn this off in Settings."
+        }
         if Bundle.main.bundleIdentifier != nil {
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
@@ -522,7 +529,8 @@ extension AppModel {
     if [[ -z ${CLAUDE_CONFIG_DIR:-} && -r "$HOME/.claude-anchor/anchor.zsh" ]]; then
       source "$HOME/.claude-anchor/anchor.zsh"
       _anchor_resolve "$PWD"
-      [[ $REPLY != - ]] && export CLAUDE_CONFIG_DIR=$REPLY
+      if [[ $REPLY != - ]]; then export CLAUDE_CONFIG_DIR=$REPLY CLAUDE_ANCHOR_ACCOUNT=${REPLY:t}
+      else export CLAUDE_ANCHOR_ACCOUNT=primary; fi
     fi
     exec "$@"
 

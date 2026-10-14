@@ -37,10 +37,11 @@ claude() {
     return
   fi
   _anchor_resolve "$PWD"
+  # CLAUDE_ANCHOR_ACCOUNT lets a session tell which account it runs on (~/.claude.json is always the primary's).
   if [[ $REPLY == - ]]; then
-    command claude "$@"
+    CLAUDE_ANCHOR_ACCOUNT=primary command claude "$@"
   else
-    CLAUDE_CONFIG_DIR=$REPLY command claude "$@"
+    CLAUDE_ANCHOR_ACCOUNT=${REPLY:t} CLAUDE_CONFIG_DIR=$REPLY command claude "$@"
   fi
 }
 
