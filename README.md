@@ -25,8 +25,10 @@ The installer downloads the latest release and verifies its SHA-256 checksum. If
 ```sh
 git clone https://github.com/SumithSB/claude-anchor.git
 cd claude-anchor
-scripts/build.sh --install
+CLAUDE_ANCHOR_FROM_SOURCE=. ./install.sh
 ```
+
+This builds, installs and adds the shell hook. `scripts/build.sh --install` only copies the app, so terminal `claude` isn't routed until you add `source ~/.claude-anchor/anchor.zsh` to `~/.zshrc`.
 
 `scripts/package.sh` produces `dist/ClaudeAnchor-<version>.zip` and its `.sha256`.
 
@@ -85,7 +87,18 @@ It removes the app, the `~/.zshrc` line and the editor setting (with backups), t
 
 - Unofficial; not affiliated with or endorsed by Anthropic.
 - Relies on undocumented Claude Code behaviour that may change: Keychain service naming, the usage endpoint, and the transcript layout.
+- A running session can't change account. Claude Code picks its config dir and Keychain login once, at startup, and nothing outside the process can change that. Switching the dial or a folder rule affects new sessions only. To move a conversation, use **Continue on another account**, which copies the transcript and resumes it in a new process (in Terminal). Running `/login` inside a session replaces that account's login; it doesn't switch accounts.
 - Ad-hoc signed, not notarized. The installer clears the quarantine flag; a manually downloaded zip may need right-click, Open.
+
+## Roadmap
+
+Planned, not yet supported:
+
+- **Other operating systems:** Linux and Windows, with a tray app and routing for bash, fish and PowerShell.
+- **Other coding agents:** Codex CLI, Gemini CLI, Cursor Agent and other agent CLIs, with the same folder rules and usage view.
+- **Other providers:** OpenAI, Google and other model providers' accounts and API keys, side by side with Claude accounts.
+
+Ideas and pull requests are welcome in [Issues](https://github.com/SumithSB/claude-anchor/issues).
 
 ## License
 
