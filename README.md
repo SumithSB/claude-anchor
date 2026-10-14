@@ -56,6 +56,7 @@ This builds, installs and adds the shell hook. `scripts/build.sh --install` only
 - **Continue on another account:** pick a conversation and continue it in Terminal under a different account.
 - **Usage:** by account, project and model. The dollar figure marked "≈" is the API price of the tokens, not your bill.
 - VS Code and Cursor are routed automatically: on first launch the app sets their Claude process wrapper (your settings are backed up first). New conversations follow the dial and folder rules; running ones keep their account. Turn it off in Settings > "Use in VS Code and Cursor".
+- Conversation history is shared per folder: before `claude` starts (terminal or VS Code), the folder's conversations are synced across your accounts, so `--resume`, `-c` and the VS Code history list keep working after you switch. A copy is only ever extended, never overwritten if the two have diverged, and usage stays with the account that ran it. Set `CLAUDE_ANCHOR_NO_SYNC=1` to turn this off.
 - To see which account a session uses, run `/status` in it, or check `$CLAUDE_ANCHOR_ACCOUNT`. Don't go by `~/.claude.json`: it always belongs to your primary account.
 
 Bypass the shell function with `CLAUDE_ANCHOR_OFF=1` or by exporting `CLAUDE_CONFIG_DIR`. `anchor-which` prints what the current folder resolves to.

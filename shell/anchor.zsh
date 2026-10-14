@@ -31,12 +31,58 @@ _anchor_resolve() {
   if (( best_len >= 0 )); then REPLY=$best_cfg; else REPLY=$def_cfg; fi
 }
 
+# _anchor_sync -> share this folder's conversations across every account before claude starts,
+# so --resume, -c and VS Code's history work after switching accounts.
+# A copy is only created or extended (when it is an exact prefix of the newer one); diverged copies are left alone.
+# Copies are logged to ~/.claude-anchor/copied so the app doesn't count their history as new usage.
+_anchor_sync() {
+  emulate -L zsh
+  setopt null_glob
+  [[ -n ${CLAUDE_ANCHOR_NO_SYNC:-} ]] && return 0
+  zmodload -F zsh/stat b:zstat 2>/dev/null || return 0
+  local home=${CLAUDE_ANCHOR_HOME:-$HOME/.claude-anchor}
+  local -a dirs=($HOME/.claude $home/accounts/*(/N))
+  (( ${#dirs} > 1 )) || return 0
+  local enc=${PWD//[^A-Za-z0-9]/-} d f name src t ledger=$home/copied
+  local -a st
+  local -A best bestsize
+  for d in $dirs; do
+    for f in $d/projects/$enc/*.jsonl; do
+      name=${f:t}
+      zstat -A st +size -- $f 2>/dev/null || continue
+      if (( st[1] > ${bestsize[$name]:--1} )); then best[$name]=$f; bestsize[$name]=$st[1]; fi
+    done
+  done
+  for name src in ${(kv)best}; do
+    for d in $dirs; do
+      t=$d/projects/$enc/$name
+      [[ $t == $src ]] && continue
+      if [[ -e $t ]]; then
+        zstat -A st +size -- $t 2>/dev/null || continue
+        (( st[1] < bestsize[$name] )) || continue
+        head -c $st[1] -- $src | cmp -s - $t || continue   # diverged: leave both alone
+      fi
+      mkdir -p -- $t:h || continue
+      print -r -- "$t"$'\t'"${bestsize[$name]}" >> $ledger
+      cp -p -- $src $t 2>/dev/null || continue
+      if [[ -d ${src:r} ]]; then                      # subagent transcripts live beside the session
+        rm -rf -- ${t:r} && cp -Rp -- ${src:r} ${t:r} 2>/dev/null
+        for f in ${t:r}/**/*.jsonl; do
+          zstat -A st +size -- $f 2>/dev/null && print -r -- "$f"$'\t'"$st[1]" >> $ledger
+        done
+      fi
+    done
+  done
+  return 0
+}
+
 claude() {
   if [[ -n ${CLAUDE_ANCHOR_OFF:-} || -n ${CLAUDE_CONFIG_DIR:-} || ! -r ${CLAUDE_ANCHOR_ROUTES:-$HOME/.claude-anchor/routes} ]]; then
     command claude "$@"
     return
   fi
   _anchor_resolve "$PWD"
+  _anchor_sync
   # CLAUDE_ANCHOR_ACCOUNT lets a session tell which account it runs on (~/.claude.json is always the primary's).
   if [[ $REPLY == - ]]; then
     CLAUDE_ANCHOR_ACCOUNT=primary command claude "$@"

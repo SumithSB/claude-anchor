@@ -529,6 +529,7 @@ extension AppModel {
     if [[ -z ${CLAUDE_CONFIG_DIR:-} && -r "$HOME/.claude-anchor/anchor.zsh" ]]; then
       source "$HOME/.claude-anchor/anchor.zsh"
       _anchor_resolve "$PWD"
+      (( $+functions[_anchor_sync] )) && _anchor_sync
       if [[ $REPLY != - ]]; then export CLAUDE_CONFIG_DIR=$REPLY CLAUDE_ANCHOR_ACCOUNT=${REPLY:t}
       else export CLAUDE_ANCHOR_ACCOUNT=primary; fi
     fi

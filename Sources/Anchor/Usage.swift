@@ -37,6 +37,28 @@ final class UsageIndex: @unchecked Sendable {
         setFile(path, FileState(offset: size, size: size, inode: inode))
     }
 
+    /// Conversations the shell hook copied between accounts (`<path>\t<copied size>` per line): start those
+    /// files at the copied size, so shared history isn't counted again for the account it was copied to.
+    private func applyLedger() {
+        let fm = FileManager.default
+        let path = (storePath as NSString).deletingLastPathComponent + "/copied", work = path + ".processing"
+        if !fm.fileExists(atPath: work) { guard (try? fm.moveItem(atPath: path, toPath: work)) != nil else { return } }
+        defer { try? fm.removeItem(atPath: work) }
+        guard let text = try? String(contentsOfFile: work, encoding: .utf8) else { return }
+        for line in text.split(separator: "\n") {
+            let p = line.split(separator: "\t", maxSplits: 1)
+            guard p.count == 2, let size = UInt64(p[1]),
+                  let at = try? fm.attributesOfItem(atPath: String(p[0])) else { continue }
+            let inode = (at[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+            lock.lock()
+            let cur = state.files[String(p[0])]
+            if cur == nil || cur?.inode != inode || (cur?.offset ?? 0) < size {
+                state.files[String(p[0])] = FileState(offset: size, size: size, inode: inode)
+            }
+            lock.unlock()
+        }
+    }
+
     convenience init() { self.init(storePath: Paths.usage) }
 
     init(storePath: String) {
@@ -69,6 +91,7 @@ final class UsageIndex: @unchecked Sendable {
 
     func scan(accounts: [Account]) {
         scanGate.lock(); defer { scanGate.unlock() }
+        applyLedger()
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let iso2 = ISO8601DateFormatter()
         let dayFmt = DateFormatter(); dayFmt.locale = Locale(identifier: "en_US_POSIX"); dayFmt.dateFormat = "yyyy-MM-dd"
