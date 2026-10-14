@@ -1,0 +1,13 @@
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+      - run: zsh shell/anchor.zsh --selftest
