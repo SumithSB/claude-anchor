@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Engine order telegraph: a half dial, one sector per account, a brass lever that points at the default.
-struct TelegraphView: View {
+@MainActor struct TelegraphView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool

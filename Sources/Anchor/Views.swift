@@ -20,7 +20,7 @@ private func resetText(_ d: Date?) -> String {
     return "Resets " + d.formatted(.dateTime.weekday(.abbreviated))
 }
 
-struct PopoverView: View {
+@MainActor struct PopoverView: View {
     @State private var path: [Pane] = []
     var body: some View {
         NavigationStack(path: $path) {
@@ -31,7 +31,7 @@ struct PopoverView: View {
     }
 }
 
-struct PopoverHome: View {
+@MainActor struct PopoverHome: View {
     @Environment(AppModel.self) private var model
     @Binding var path: [Pane]
     @State private var loginOn = SMAppService.mainApp.status == .enabled
@@ -243,7 +243,7 @@ struct PopoverHome: View {
 
 // MARK: shared pane chrome
 
-struct PaneHeader: View {
+@MainActor struct PaneHeader: View {
     let title: String
     @Environment(\.dismiss) private var dismiss
     var body: some View {
@@ -259,7 +259,7 @@ struct PaneHeader: View {
 
 // MARK: rules
 
-struct RulesPane: View {
+@MainActor struct RulesPane: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {

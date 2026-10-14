@@ -23,7 +23,7 @@ extension Color {
 }
 
 /// International Code of Signals flag, 3:2 (A and B are swallowtails).
-struct FlagView: View {
+@MainActor struct FlagView: View {
     let flag: SignalFlag
     var size: CGFloat = 14
 
@@ -110,7 +110,7 @@ enum FlagArt {
 
 // MARK: flag picker and accounts pane
 
-struct FlagGrid: View {
+@MainActor struct FlagGrid: View {
     @Binding var flag: SignalFlag
     var used: Set<SignalFlag> = []
     var body: some View {
@@ -126,7 +126,7 @@ struct FlagGrid: View {
     }
 }
 
-struct AccountsPane: View {
+@MainActor struct AccountsPane: View {
     @Environment(AppModel.self) private var model
     @State private var editing: String?
     @State private var draft = ""
@@ -221,7 +221,7 @@ struct AccountsPane: View {
     }
 }
 
-struct RemoveSheet: View {
+@MainActor struct RemoveSheet: View {
     let account: Account
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss

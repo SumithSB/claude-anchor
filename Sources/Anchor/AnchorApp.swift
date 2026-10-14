@@ -18,7 +18,7 @@ extension AppModel {
     static let shared: AppModel = { let m = AppModel(); m.start(); return m }()
 }
 
-struct AnchorApp: App {
+@MainActor struct AnchorApp: App {
     private let model = AppModel.shared
 
     var body: some Scene {
