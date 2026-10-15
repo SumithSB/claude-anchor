@@ -68,6 +68,18 @@ This builds, installs and adds the shell hook. `scripts/build.sh --install` only
 
 `scripts/package.sh` produces `dist/ClaudeAnchor-<version>.zip` and its `.sha256`.
 
+### Linux and Windows
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh | bash   # Linux (x86_64)
+```
+
+```powershell
+irm https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.ps1 | iex            # Windows
+```
+
+Linux installs an AppImage to `~/.local/bin`, a `.desktop` entry, and the `anchor` CLI to `~/.claude-anchor/bin` with a line in `~/.bashrc`/`~/.zshrc`. Windows runs the per-user installer and adds a line to your PowerShell profile. `CLAUDE_ANCHOR_NO_SHELL=1` skips the profile line. Windows builds are unsigned, so SmartScreen may warn. Remove with `uninstall.sh` / `uninstall.ps1`; `~/.claude-anchor` is kept.
+
 ## Upgrading
 
 Homebrew users:

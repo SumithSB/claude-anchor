@@ -45,3 +45,36 @@ jobs:
           $t = pwsh -Command "(Get-Command claude).CommandType"
           $t
           if ($t -ne 'Function') { exit 1 }
+
+  tray:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cross
+      - name: Sidecar (Linux)
+        if: runner.os == 'Linux'
+        run: cross/tray/scripts/prepare-sidecar.sh
+      - name: Sidecar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cross\tray\scripts\prepare-sidecar.ps1
+      - name: Clippy
+        working-directory: cross
+        run: cargo clippy -p anchor-tray -- -D warnings
+      - name: Build
+        working-directory: cross
+        run: cargo build -p anchor-tray
