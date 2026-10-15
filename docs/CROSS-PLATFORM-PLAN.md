@@ -1,5 +1,7 @@
 # Windows and Linux plan
 
+Status: shipped in 0.4.0 (all phases below). Kept as the design record for `cross/`.
+
 The macOS app (`Sources/Anchor`, Swift) stays as it is. Windows and Linux get:
 
 - `cross/core`: Rust library + `anchor` CLI. All logic lives here.

@@ -132,7 +132,7 @@ if [ "$(uname -s)" = Linux ]; then
   return 0
 fi
 
-[ "$(uname -s)" = Darwin ] || die "Claude Anchor only runs on macOS." "Use a Mac running macOS 14 or later."
+[ "$(uname -s)" = Darwin ] || die "Claude Anchor runs on macOS, Linux and Windows, not $(uname -s)." "On Windows, run install.ps1 in PowerShell instead."
 MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
 [ "$MAJOR" -ge 14 ] || die "macOS 14 or later is required (found $(sw_vers -productVersion))." "Update macOS, then run this again."
 
