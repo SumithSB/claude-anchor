@@ -190,9 +190,11 @@ mod tests {
 
     #[test]
     fn overflow_picks_fresh_then_lowest() {
-        let mut cfg = Config::default();
-        cfg.accounts = ["a", "b", "c", "d"].iter().map(|i| acct(i, "/x")).collect();
-        cfg.default_id = "a".into();
+        let mut cfg = Config {
+            accounts: ["a", "b", "c", "d"].iter().map(|i| acct(i, "/x")).collect(),
+            default_id: "a".into(),
+            ..Config::default()
+        };
         let hot = lim(95.0, 10.0);
         let mut err = lim(0.0, 0.0); err.error = Some("x".into());
         let m = |v: Vec<(&str, Limits)>| v.into_iter().map(|(k, l)| (k.to_string(), l)).collect::<HashMap<_, _>>();

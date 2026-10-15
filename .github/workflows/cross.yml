@@ -1,0 +1,47 @@
+name: cross
+
+on:
+  push:
+    branches: [main, "claude/**", cross-platform]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: cross
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cross
+      - run: cargo clippy -p anchor-core --all-targets -- -D warnings
+      - run: cargo test -p anchor-core
+
+      - name: Smoke (bash)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cargo build -p anchor-core
+          export HOME="$(mktemp -d)"
+          target/debug/anchor install
+          bash -ic 'type claude' 2>&1 | tee out.txt
+          grep -q 'function' out.txt
+
+      - name: Smoke (PowerShell)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cargo build -p anchor-core
+          target\debug\anchor.exe install
+          $t = pwsh -Command "(Get-Command claude).CommandType"
+          $t
+          if ($t -ne 'Function') { exit 1 }
