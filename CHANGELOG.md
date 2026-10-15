@@ -2,6 +2,16 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-10-15
+
+### Added
+
+- App icon: a white anchor on a clay tile, matching the logo in the menu. It shows in Finder, Spotlight, Launchpad and notifications. `scripts/make-icon.swift` regenerates `Resources/AppIcon.icns`.
+
+### Fixed
+
+- Building from source no longer leaves a second copy of the app in Spotlight and Launchpad. Builds go to `build.noindex/`, which macOS doesn't index.
+
 ## [0.3.1] - 2026-10-15
 
 ### Fixed

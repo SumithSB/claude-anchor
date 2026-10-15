@@ -1,5 +1,7 @@
 .build/
+build.noindex/
 build/
+build.noindex/
 dist/
 .DS_Store
 .vscode/

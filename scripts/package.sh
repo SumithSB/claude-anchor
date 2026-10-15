@@ -9,7 +9,7 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resour
 ZIP="ClaudeAnchor-${VERSION}.zip"
 mkdir -p dist
 rm -f "dist/$ZIP" "dist/$ZIP.sha256"
-ditto -c -k --keepParent "build/Claude Anchor.app" "dist/$ZIP"
+ditto -c -k --keepParent "build.noindex/Claude Anchor.app" "dist/$ZIP"
 (cd dist && shasum -a 256 "$ZIP" > "$ZIP.sha256")
 echo "packaged dist/$ZIP"
 cat "dist/$ZIP.sha256"

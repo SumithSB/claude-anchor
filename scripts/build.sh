@@ -5,7 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME="Claude Anchor"
-APP="build/${APP_NAME}.app"
+# build.noindex: Spotlight and Launchpad skip it, so dev builds never show up as a second copy of the app.
+APP="build.noindex/${APP_NAME}.app"
 INSTALL=0
 
 for arg in "$@"; do
@@ -28,6 +29,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Anchor" "$APP/Contents/MacOS/Anchor"
 cp shell/anchor.zsh "$APP/Contents/Resources/anchor.zsh"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 strip -x "$APP/Contents/MacOS/Anchor"
 codesign --force --deep --sign - "$APP"
 
