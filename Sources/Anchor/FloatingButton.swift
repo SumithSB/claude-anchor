@@ -377,7 +377,8 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
 
     private func restoredOrigin(_ model: AppModel) -> NSPoint {
         let s = Self.side
-        if let x = model.config.floatingX, let y = model.config.floatingY {
+        if let fx = model.config.floatingX, let fy = model.config.floatingY {
+            let x = CGFloat(fx), y = CGFloat(fy)
             let r = NSRect(x: x, y: y, width: s, height: s)
             let c = NSPoint(x: r.midX, y: r.midY)
             if let scr = NSScreen.screens.first(where: { $0.visibleFrame.insetBy(dx: -20, dy: -20).contains(c) }) {

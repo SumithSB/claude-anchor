@@ -52,7 +52,7 @@ private struct HarborChain: Shape {
 
     func path(in r: CGRect) -> Path {
         let hy: CGFloat = 10
-        let sag = max(8, 46 - abs(tip.x - hx) * 0.12 - (taut ? 20 : 0))
+        let sag: CGFloat = max(8, 46 - abs(tip.x - hx) * 0.12 - (taut ? 20 : 0))
         var p = Path()
         p.move(to: CGPoint(x: hx, y: hy))
         p.addQuadCurve(to: tip, control: CGPoint(x: (hx + tip.x) / 2, y: (hy + tip.y) / 2 + sag))
@@ -200,12 +200,14 @@ private struct HarborScrollCatcher: NSViewRepresentable {
                     .offset(x: L.x(L.n) - pan - L.w / 2, y: Self.berthTop)
             }
 
-            HarborChain(hx: width / 2, tip: CGPoint(x: vx, y: pt.y - 16), taut: dragging)
-                .stroke(Color.black.opacity(0.22), style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .allowsHitTesting(false)
-            HarborChain(hx: width / 2, tip: CGPoint(x: vx, y: pt.y - 16), taut: dragging)
-                .stroke(Clay.chain, style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [5, 3]))
-                .allowsHitTesting(false)
+            Group {   // grouped: ViewBuilder takes at most 10 children
+                HarborChain(hx: width / 2, tip: CGPoint(x: vx, y: pt.y - 16), taut: dragging)
+                    .stroke(Color.black.opacity(0.22), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .allowsHitTesting(false)
+                HarborChain(hx: width / 2, tip: CGPoint(x: vx, y: pt.y - 16), taut: dragging)
+                    .stroke(Clay.chain, style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [5, 3]))
+                    .allowsHitTesting(false)
+            }
             hull
 
             if L.mode == .scroll { quayChrome(L, pan) }

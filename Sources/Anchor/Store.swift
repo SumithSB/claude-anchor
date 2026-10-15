@@ -432,7 +432,9 @@ extension AppModel {
         signingIn.insert(id)
         banner = nil
         // ponytail: fixed 10 min timeout; the CLI has its own, this just stops a forgotten tab holding a process
-        DispatchQueue.main.asyncAfter(deadline: .now() + 600) { if AnchorRuntime.logins[id] === p { self.banner = "Sign-in for \(a.name) timed out. Try again."; p.terminate() } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 600) {
+            MainActor.assumeIsolated { if AnchorRuntime.logins[id] === p { self.banner = "Sign-in for \(a.name) timed out. Try again."; p.terminate() } }
+        }
     }
 
     func cancelSignIn(_ id: String) { AnchorRuntime.logins[id]?.terminate() }

@@ -12,7 +12,7 @@ import AppKit
             MainActor.assumeIsolated { BragAssets.run(dir: a[i + 1]) }
             exit(0)
         }
-        AnchorApp.main()
+        MainActor.assumeIsolated { AnchorApp.main() }
     }
 }
 
@@ -207,7 +207,7 @@ struct AnchorGlyph: Shape {
         p.addLine(to: CGPoint(x: x + w * 0.3, y: r.minY + h * 0.36))
         p.move(to: CGPoint(x: r.minX, y: r.minY + h * 0.62))                                         // arms
         p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + h * 0.62), control: CGPoint(x: x, y: r.maxY + h * 0.42))
-        for (dx, sgn) in [(r.minX, 1.0), (r.maxX, -1.0)] {                                           // flukes
+        for (dx, sgn) in [(r.minX, CGFloat(1)), (r.maxX, CGFloat(-1))] {                                           // flukes
             p.move(to: CGPoint(x: dx, y: r.minY + h * 0.62))
             p.addLine(to: CGPoint(x: dx + sgn * w * 0.16, y: r.minY + h * 0.56))
         }
