@@ -57,7 +57,7 @@ build_source() {
   fi
   step "Building from source (this takes a minute)"
   (cd "$src" && scripts/build.sh) || die "Build failed." "See the output above. Xcode or Command Line Tools 15+ is required."
-  APP_SRC="$src/build/$APP_NAME.app"
+  APP_SRC="$src/build.noindex/$APP_NAME.app"
 }
 
 if [ -n "${CLAUDE_ANCHOR_FROM_SOURCE:-}" ]; then
