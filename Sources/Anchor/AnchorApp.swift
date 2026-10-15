@@ -25,6 +25,14 @@ extension AppModel {
 @MainActor struct AnchorApp: App {
     private let model = AppModel.shared
 
+    init() {
+        // After launch finishes, so the panel isn't built mid-startup; sync is idempotent, so a second pass
+        // catches a config that loads a moment later.
+        let m = AppModel.shared
+        DispatchQueue.main.async { FloatingController.shared.sync(m) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { FloatingController.shared.sync(m) }
+    }
+
     var body: some Scene {
         MenuBarExtra {
             PopoverView().environment(model)
@@ -76,14 +84,34 @@ extension AppModel {
         shoot(six, dark: false, to: prefix + "-accounts.png", view: AnyView(AccountsPane()))
         shoot(six, dark: false, to: prefix + "-rules.png", view: AnyView(RulesPane()))
         shoot(three, dark: false, to: prefix + "-settings.png", view: AnyView(SettingsPane()))
+        shoot(freshScenario(), dark: false, to: prefix + "-fresh.png")
+        shoot(freshScenario(), dark: true, to: prefix + "-fresh-dark.png")
+        shoot(six, dark: false, to: prefix + "-popout.png", view: AnyView(PopoverView(popout: true)), width: 400, height: 760)
+        floating(prefix: prefix)
     }
 
-    static func shoot(_ model: AppModel, dark: Bool, to path: String, view: AnyView? = nil) {
+    /// Floating button (calm, fresh, near-limit), its tooltip and the quick panel.
+    static func floating(prefix: String, scale: Int = 2) {
+        let calm = fake(six: false), hot = nearLimit(), fresh = freshScenario()
+        for dark in [false, true] {
+            let d = dark ? "-dark" : ""
+            shoot(calm, dark: dark, to: prefix + "-floating\(d).png", view: AnyView(FloatingButtonView()), width: 72, height: 72, clear: true)
+            shoot(hot, dark: dark, to: prefix + "-floating-hot\(d).png", view: AnyView(FloatingButtonView()), width: 72, height: 72, clear: true)
+            shoot(fresh, dark: dark, to: prefix + "-floating-fresh\(d).png", view: AnyView(FloatingButtonView()), width: 72, height: 72, clear: true)
+            shoot(fresh, dark: dark, to: prefix + "-floating-tip\(d).png", view: AnyView(FloatingTooltipView()), clear: true)
+            shoot(fresh, dark: dark, to: prefix + "-quick\(d).png", view: AnyView(QuickPanelView().background(Clay.paper).clipShape(RoundedRectangle(cornerRadius: 20))), width: 300, clear: true)
+        }
+        shoot(hot, dark: false, to: prefix + "-quick-hot.png", view: AnyView(QuickPanelView().background(Clay.paper).clipShape(RoundedRectangle(cornerRadius: 20))), width: 300, clear: true)
+    }
+
+    static func shoot(_ model: AppModel, dark: Bool, to path: String, view: AnyView? = nil,
+                      width: CGFloat = 340, height: CGFloat? = nil, clear: Bool = false) {
         let scheme: ColorScheme = dark ? .dark : .light
         let host = NSHostingView(rootView: (view ?? AnyView(PopoverView())).environment(model).environment(\.colorScheme, scheme).environment(\.snapshotMode, true))
-        let size = NSSize(width: 340, height: host.fittingSize.height)
+        let size = NSSize(width: width, height: height ?? host.fittingSize.height)
         let win = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
         win.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        if clear { win.isOpaque = false; win.backgroundColor = .clear }
         win.contentView = host
         host.frame = NSRect(origin: .zero, size: size)
         win.orderFrontRegardless()
@@ -116,6 +144,22 @@ extension AppModel {
         return m
     }
 
+    /// Three accounts, Work is the default; Personal has a full, untouched 5h window.
+    static func freshScenario() -> AppModel {
+        let m = fake(six: false)
+        m.limits["personal"] = Limits(fiveHour: LimitWindow(percent: 0, resetsAt: nil),
+                                      weekly: LimitWindow(percent: 3, resetsAt: Date().addingTimeInterval(2 * 86_400)), fetchedAt: Date())
+        return m
+    }
+
+    /// Default account at 92% of its 5h window.
+    static func nearLimit() -> AppModel {
+        let m = fake(six: false)
+        m.limits["primary"] = Limits(fiveHour: LimitWindow(percent: 92, resetsAt: Date().addingTimeInterval(1320)),
+                                     weekly: LimitWindow(percent: 54, resetsAt: Date().addingTimeInterval(2 * 86_400)), fetchedAt: Date())
+        return m
+    }
+
     static func fake(six: Bool) -> AppModel {
         let m = blank()
         let emails = ["primary": "you@work.example", "client": "you@client.example", "personal": "you@example.com",
@@ -133,7 +177,8 @@ extension AppModel {
             Limits(fiveHour: LimitWindow(percent: a, resetsAt: now.addingTimeInterval(6000)),
                    weekly: LimitWindow(percent: b, resetsAt: now.addingTimeInterval(2 * 86_400)), fetchedAt: now)
         }
-        m.limits = ["primary": lim(68, 31), "client": lim(22, 12), "personal": lim(5, 3), "studio": lim(93, 41)]
+        // Personal is FRESH (unused 5h window), Studio is near its limit.
+        m.limits = ["primary": lim(68, 31), "client": lim(22, 12), "personal": lim(0, 3), "studio": lim(93, 41)]
         if six { m.banner = "Switched to Studio. Work hit 92% of its 5h limit."; m.overflowSuggestion = "studio" }
         m.usageRows = [
             UsageRow(id: "primary", label: "Work", accountID: "primary", tokens: 1_240_000, outputTokens: 180_000, cost: 14.2),
@@ -187,11 +232,10 @@ struct AnchorGlyph: Shape {
         hot.banner = "Switched to Personal. Work hit 92% of its 5h limit."; hot.overflowSuggestion = "personal"
         Snapshot.shoot(hot, dark: false, to: dir + "/popover-limit.png")
         Snapshot.shoot(m, dark: false, to: dir + "/rules.png", view: AnyView(RulesPane()))
-        // dial alone, uniform sweep of lever positions 0.12...0.88 (Work centre is 1/6, Personal 5/6), dark, transparent, 4x
-        let N = 200
-        for k in 0..<N {
-            dial(m, pos: 0.12 + 0.76 * Double(k) / Double(N - 1), to: String(format: "%@/dial-%03d.png", dir, k))
-        }
+        Snapshot.shoot(Snapshot.freshScenario(), dark: false, to: dir + "/popover-fresh.png")
+        Snapshot.shoot(Snapshot.freshScenario(), dark: true, to: dir + "/popover-fresh-dark.png")
+        Snapshot.shoot(m, dark: false, to: dir + "/popout.png", view: AnyView(PopoverView(popout: true)), width: 400, height: 760)
+        Snapshot.floating(prefix: dir + "/floating")
         for p in [0, 25, 50, 75, 100] {
             icon(MenuBarIcon.image(percent: Double(p), ink: .white, scale: 4), dir + "/menubar-icon-\(p).png")
         }
@@ -200,22 +244,5 @@ struct AnchorGlyph: Shape {
 
     static func icon(_ img: NSImage, _ path: String) {
         if let t = img.tiffRepresentation, let r = NSBitmapImageRep(data: t) { png(path, r) }
-    }
-
-    static func dial(_ m: AppModel, pos: Double, to path: String) {
-        let host = NSHostingView(rootView: TelegraphView(previewPos: pos).environment(m).environment(\.colorScheme, .dark))
-        let size = NSSize(width: 308, height: 156), S = 4
-        let win = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
-        win.appearance = NSAppearance(named: .darkAqua); win.isOpaque = false; win.backgroundColor = .clear
-        win.contentView = host; host.frame = NSRect(origin: .zero, size: size)
-        win.orderFrontRegardless()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.06))
-        host.layoutSubtreeIfNeeded()
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * S, pixelsHigh: Int(size.height) * S, bitsPerSample: 8,
-                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
-        rep.size = size
-        host.cacheDisplay(in: host.bounds, to: rep)
-        png(path, rep)
-        win.orderOut(nil)
     }
 }
