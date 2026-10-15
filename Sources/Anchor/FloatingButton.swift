@@ -131,19 +131,13 @@ enum FloatingFormat {
 
 @MainActor struct QuickPanelView: View {
     @Environment(AppModel.self) private var model
-    var maxHeight: CGFloat?
     var onOpenFull: () -> Void = {}
+    var onHeight: (CGFloat) -> Void = { _ in }
 
+    // One copy of the content only: a ViewThatFits fallback swapped in a second HarborView (fresh state)
+    // whenever the card grew, which made the anchor jump mid-drag.
     var body: some View {
-        if let maxHeight {
-            ViewThatFits(in: .vertical) {
-                content
-                ScrollView(.vertical, showsIndicators: false) { content }
-            }
-            .frame(width: 280, height: maxHeight)
-        } else {
-            content
-        }
+        content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onHeight($0) }
     }
 
     private var content: some View {
@@ -531,14 +525,16 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
         // Solid paper, like the menu: the system popover material looks washed out over light wallpapers.
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         let host = NSHostingView(rootView: QuickPanelView(
-            maxHeight: h,
-            onOpenFull: { [weak self] in self?.closeQuick(); openMenuBarWindow(model) }
+            onOpenFull: { [weak self] in self?.closeQuick(); openMenuBarWindow(model) },
+            onHeight: { [weak self] in self?.fitQuick(height: $0) }
         )
         .background(Clay.paper)
         .clipShape(shape)
         .overlay(shape.strokeBorder(Clay.hairline, lineWidth: 1))
         .environment(model))
+        host.sizingOptions = []   // the controller sizes the panel (top edge pinned), not the content
         host.frame = NSRect(x: 0, y: 0, width: w, height: h)
+        host.autoresizingMask = [.width, .height]
         q.contentView = host
 
         // Beside the button; flips to the other side near a screen edge.
@@ -566,6 +562,16 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
             }
             return swallow ? nil : e
         }
+    }
+
+    /// The card's height changes with its state (a fresh button appears or goes): grow or shrink downward from the top.
+    private func fitQuick(height: CGFloat) {
+        guard let q = quick else { return }
+        let h = ceil(height)
+        guard abs(q.frame.height - h) > 0.5 else { return }
+        let vf = screen(containing: q.frame)?.visibleFrame ?? q.frame
+        let top = q.frame.maxY
+        q.setFrame(NSRect(x: q.frame.minX, y: max(vf.minY + 10, top - h), width: q.frame.width, height: h), display: true)
     }
 
     private func closeQuick() {

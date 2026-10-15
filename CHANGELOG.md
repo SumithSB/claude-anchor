@@ -2,6 +2,12 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-10-15
+
+### Fixed
+
+- Dragging the anchor right to left in the floating button's glance card no longer makes it jump. The card now resizes to fit its content instead of swapping in a second, scrolling copy.
+
 ## [0.3.0] - 2026-10-15
 
 ### Added
