@@ -76,7 +76,9 @@ Homebrew users:
 brew update && brew upgrade --cask claude-anchor
 ```
 
-Curl installer users re-run the installer:
+The upgrade quits Claude Anchor. Open it again from Applications (or Spotlight) afterwards.
+
+Curl installer users re-run the installer. It quits the running app, installs the new version and opens it:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh | bash
