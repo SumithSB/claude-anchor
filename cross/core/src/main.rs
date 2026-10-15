@@ -205,9 +205,12 @@ fn install() -> R {
     let changed = hook::install_hook(&s.paths)?;
     if changed.is_empty() { println!("Shell hook already in place."); }
     for f in changed { println!("Added the hook to {}", f.display()); }
+    // Editors are optional: a settings file we can't edit mustn't fail the install.
     if editor::settings_files(&s.paths).iter().any(|f| f.exists()) {
-        s.set_editor_integration(true)?;
-        println!("Editor integration on.");
+        match s.set_editor_integration(true) {
+            Ok(()) => println!("Editor integration on."),
+            Err(e) => eprintln!("Editor integration skipped: {e}"),
+        }
     }
     println!("Open a new terminal for `claude` to be routed.");
     Ok(())
