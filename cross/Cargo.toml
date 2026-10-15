@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
