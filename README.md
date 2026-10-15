@@ -1,6 +1,6 @@
 # Claude Anchor
 
-A macOS app that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account. Use it from the menu bar, a floating button, or a pop-out panel.
+An app for macOS, Windows and Linux that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account. Use it from the menu bar (or the system tray on Windows and Linux), a floating button, or a pop-out panel. The screenshots show the macOS app.
 
 ![Claude Anchor in 26 seconds](docs/tour.gif)
 
@@ -16,7 +16,7 @@ A macOS app that routes Claude Code to the right Claude account for each folder,
 
 The screenshots are taken from the current build. Dark mode, six accounts, first-run and sign-in screens are also in [`docs/`](docs/).
 
-Unofficial and not affiliated with Anthropic. Free, MIT licensed, macOS 14+.
+Unofficial and not affiliated with Anthropic. Free, MIT licensed. macOS 14+, Windows 10/11 (x64) and Linux (x86_64).
 
 ## What's new in 0.3
 
@@ -32,6 +32,8 @@ Unofficial and not affiliated with Anthropic. Free, MIT licensed, macOS 14+.
 The full list is in the [changelog](CHANGELOG.md). Task-by-task instructions are in the [user guide](docs/USER-GUIDE.md).
 
 ## Install
+
+### macOS
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh | bash
@@ -68,6 +70,34 @@ This builds, installs and adds the shell hook. `scripts/build.sh --install` only
 
 `scripts/package.sh` produces `dist/ClaudeAnchor-<version>.zip` and its `.sha256`.
 
+### Windows
+
+```powershell
+irm https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.ps1 | iex
+```
+
+Needs 64-bit Windows 10 or 11 and PowerShell 5.1 or later. The installer downloads the latest release, verifies its SHA-256 checksum, installs the app for your user, and adds one marked line (`# claude-anchor`) to each PowerShell profile. Skip the profile line with `CLAUDE_ANCHOR_NO_SHELL=1`.
+
+The build is unsigned, so Windows SmartScreen may stop the first launch with "Windows protected your PC". Click **More info**, then **Run anyway**.
+
+Open a new terminal after install so `claude` is routed.
+
+### Linux
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh | bash
+```
+
+Needs x86_64. The installer downloads the AppImage and the `anchor` CLI from the latest release and verifies both checksums. Other architectures, or a machine with no usable release, build from source. That needs Rust and the packages listed in [`cross/tray/README.md`](cross/tray/README.md).
+
+- **Tray.** GNOME needs the AppIndicator extension to show the tray icon. The tray sends no click events on Linux, so open the app from the tray's menu (**Open**).
+- **AppImage.** It needs FUSE 2 (`libfuse2`) to run.
+- **Wayland.** There is no floating button and no Ctrl+Alt+A hotkey. Use the tray menu.
+
+Open a new terminal after install so the shell hook loads.
+
+`CLAUDE_ANCHOR_NO_SHELL=1` skips the shell hook lines in `~/.bashrc` and `~/.zshrc`.
+
 ## Upgrading
 
 Homebrew users:
@@ -96,10 +126,10 @@ Settings and accounts live in `~/.claude-anchor` and are untouched by upgrades. 
 
 ## Requirements
 
-- macOS 14 or later
-- [Claude Code](https://claude.ai/install.sh) CLI (`curl -fsSL https://claude.ai/install.sh | bash`)
-- zsh for terminal routing (VS Code and Cursor routing works regardless)
-- Swift toolchain (`xcode-select --install`) only for building from source
+- macOS 14 or later, Windows 10/11 (64-bit), or Linux (x86_64)
+- [Claude Code](https://claude.ai/install.sh) CLI (`curl -fsSL https://claude.ai/install.sh | bash`). On Windows: `irm https://claude.ai/install.ps1 | iex`
+- zsh for terminal routing on macOS (VS Code and Cursor routing works regardless). Windows routes PowerShell; Linux routes bash and zsh.
+- Swift toolchain (`xcode-select --install`) only for building from source on macOS. Rust and the Tauri packages in [`cross/tray/README.md`](cross/tray/README.md) for building on Windows or Linux.
 
 ## How it works
 
@@ -194,6 +224,28 @@ A running session keeps its account. Continuing starts a new process under the o
 
 Bypass the shell function with `CLAUDE_ANCHOR_OFF=1` or by exporting `CLAUDE_CONFIG_DIR`. `anchor-which` prints what the current folder resolves to.
 
+## Command line (Windows and Linux)
+
+The `anchor` CLI is installed to `~/.claude-anchor/bin/anchor` (`%USERPROFILE%\.claude-anchor\bin\anchor.exe` on Windows). The installer does not add that folder to your PATH, so use the full path or add the folder yourself. The CLI and the tray app read and write the same files, so a change made in one shows in the other.
+
+```
+anchor exec -- <program> [args...]    run a program routed for the current folder
+anchor which [dir]                    config dir used for a folder
+anchor status                         accounts, rules and limits
+anchor limits [--json]                5-hour and weekly limits
+anchor usage [--by account|project|model] [--days N]
+anchor account list | add <name> | login <id> | remove <id> [--to <id>] | rename <id> <name>
+anchor default <id>
+anchor rule list | add <folder> <account> [--overflow] | remove <folder>
+anchor editor on|off                  VS Code / Cursor integration
+anchor continue <account>             continue the last conversation on another account
+anchor install | uninstall            shell hook, binaries, editor integration
+```
+
+`anchor help` prints this list, and `anchor version` prints the version.
+
+`claude` is routed automatically in bash, zsh and PowerShell. In cmd.exe or fish, run Claude through the CLI instead: `anchor exec -- claude`.
+
 ## Settings reference
 
 Settings are in the app's **Settings** pane, in three cards: General, Limits and Floating button. They are stored in `~/.claude-anchor/config.json`. Every key is optional, and older files still load without them.
@@ -225,13 +277,52 @@ No telemetry. The only network traffic is to the usage endpoint on `api.anthropi
 | `~/.claude/` | read only (transcripts); settings, skills and plugins are symlinked from it |
 | Keychain | read only, Claude Code's own items |
 
+The macOS list above is the full set. Windows and Linux touch these paths instead:
+
+**Linux**
+
+- `~/.claude-anchor/`: config, routes, usage history, `bin/anchor` and `bin/claude-wrapper`, and `accounts/`.
+- `~/.bashrc` and `~/.zshrc`: one marked line each, if the file exists. If neither exists, `~/.bashrc` is created.
+- `~/.config/<editor>/User/settings.json` for VS Code, Cursor, Code - Insiders and VSCodium, if the file exists. `XDG_CONFIG_HOME` is respected. Backup: `settings.json.anchor-backup`.
+- `~/.local/bin/claude-anchor.AppImage`: the app.
+- `~/.local/share/applications/claude-anchor.desktop`: the menu entry.
+- An autostart `.desktop` file in `~/.config/autostart`, when Start at login is on.
+
+**Windows**
+
+- `%USERPROFILE%\.claude-anchor\`: config, routes, usage history, `bin\anchor.exe` and `bin\claude-wrapper.exe`, and `accounts\`.
+- `Documents\PowerShell` and `Documents\WindowsPowerShell`: `Microsoft.PowerShell_profile.ps1` in each, with one marked line. Each profile is created if missing.
+- `%APPDATA%\<editor>\User\settings.json` for VS Code, Cursor, Code - Insiders and VSCodium, if the file exists. Backup: `settings.json.anchor-backup`.
+- `%LOCALAPPDATA%\Claude Anchor\`: the per-user app install.
+- `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, a "Claude Anchor" value, when Start at login is on.
+
+**Credentials on Windows and Linux** are read from `.credentials.json` in each account's config folder (`~/.claude` for the primary account, `~/.claude-anchor/accounts/<id>` for the others). That is Claude Code's own file. The app reads the token for the usage check and sends it only to `api.anthropic.com`. It does not copy or store it.
+
 ## Uninstall
+
+### macOS
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/uninstall.sh | bash
 ```
 
 It removes the app, the `~/.zshrc` line and the editor setting (with backups), then asks before deleting `~/.claude-anchor`. Extra accounts' history lives in `~/.claude-anchor/accounts`, and their Keychain logins stay until removed in the app or with `security delete-generic-password -s "Claude Code-credentials-<hash>"`. `~/.claude` is never touched.
+
+### Windows
+
+```powershell
+irm https://raw.githubusercontent.com/SumithSB/claude-anchor/main/uninstall.ps1 | iex
+```
+
+Removes the app, the PowerShell profile lines and the editor setting. `~/.claude-anchor` is kept, and `~/.claude` is not touched.
+
+### Linux
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/uninstall.sh | bash
+```
+
+Removes the app, the `.desktop` entries, the autostart entry, the shell hook lines and the editor setting. `~/.claude-anchor` is kept, and `~/.claude` is not touched.
 
 ## Limitations
 
@@ -244,7 +335,7 @@ It removes the app, the `~/.zshrc` line and the editor setting (with backups), t
 
 Planned, not yet supported:
 
-- **Other operating systems:** Linux and Windows, with a tray app and routing for bash, fish and PowerShell.
+- **More shells:** routing for fish and cmd.exe. Linux and Windows are supported now, with the tray app and the bash, zsh and PowerShell routing described above.
 - **Other coding agents:** Codex CLI, Gemini CLI, Cursor Agent and other agent CLIs, with the same folder rules and usage view.
 - **Other providers:** OpenAI, Google and other model providers' accounts and API keys, side by side with Claude accounts.
 

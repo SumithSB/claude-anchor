@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Claude Anchor button</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  html, body { background: transparent; width: 56px; height: 56px; overflow: hidden; }
+  body { display: grid; place-items: center; }
+  .page-bg { background: #888; }
+  #fab { position: relative; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); border: 1px solid var(--hairline);
+    box-shadow: 0 4px 7px rgba(0,0,0,.28); cursor: pointer; transition: opacity .3s; touch-action: none; padding: 0; }
+  #fab.idle { opacity: .35; }
+  #fab svg.ringsvg { position: absolute; inset: 0; width: 42px; height: 42px; }
+  #fab .core { position: absolute; left: 8px; top: 8px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; color: #fff; }
+  #fab .glow { position: absolute; inset: -4px; border-radius: 50%; background: var(--fresh); filter: blur(4px); z-index: -1; opacity: .85; animation: glow 2.2s ease-in-out infinite alternate; }
+  @keyframes glow { from { opacity: .55; } to { opacity: 1; } }
+  #fab .fl { position: absolute; right: -3px; bottom: -1px; padding: 2px; border-radius: 4px; background: var(--surface); border: 1px solid var(--hairline); line-height: 0; }
+  #fab .b { position: absolute; width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; box-shadow: 0 0 0 2px var(--surface); }
+  #fab .fresh { left: -3px; top: -3px; background: var(--fresh); color: var(--fresh-ink); }
+  #fab .crit { right: -2px; top: -2px; width: 16px; height: 16px; background: var(--limit); font-size: 10px; color: var(--surface); }
+  @media (prefers-reduced-motion: reduce) { #fab .glow { animation: none; } #fab { transition: none; } }
+  @media (forced-colors: active) { #fab { border: 2px solid CanvasText; } }
+</style>
+</head>
+<body>
+<button id="fab" aria-label="Claude Anchor"></button>
+<script type="module">
+  if (!window.__TAURI__) (await import("./mock.js")).installMock();
+  const { flagSVG, anchorSVG } = await import("./flags.js");
+  const { invoke } = window.__TAURI__.core, { listen } = window.__TAURI__.event;
+  const fab = document.getElementById("fab");
+  let S = null, idleTimer = 0;
+
+  const level = (p) => (p >= 90 ? "crit" : p >= 75 ? "warn" : "ok");
+  const isFresh = (l) => !!l && !l.error && !l.stale && (l.fiveHour ? l.fiveHour.percent < 1 : !!l.weekly);
+  function countdown(iso) {
+    const s = (Date.parse(iso) - Date.now()) / 1000;
+    if (!(s > 0)) return "";
+    if (s < 60) return "<1m";
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+  function render() {
+    if (!S) return;
+    const a = S.config.accounts.find((x) => x.id === S.config.defaultID) || S.config.accounts[0];
+    const l = a && S.limits[a.id], w = l?.fiveHour, p = w?.percent;
+    const others = S.config.accounts.filter((x) => !x.pending && x.id !== a?.id && isFresh(S.limits[x.id]));
+    const fresh = (a && isFresh(l)) || others.length > 0;
+    const lv = level(p ?? 0), C = 2 * Math.PI * 18.5;
+    let tip = a ? a.name : "Claude Anchor";
+    if (w) { tip += ` · 5h ${Math.round(p)}%`; const c = w.resetsAt && countdown(w.resetsAt); if (c) tip += ` · resets in ${c}`; }
+    if (a && isFresh(l)) tip += " · full 5h window";
+    if (others.length === 1) tip += ` · ${others[0].name} is fresh`; else if (others.length > 1) tip += ` · ${others.length} fresh`;
+    fab.title = tip; fab.setAttribute("aria-label", "Claude Anchor. " + tip);
+    fab.innerHTML =
+      (fresh ? `<span class="glow"></span>` : "") +
+      `<svg class="ringsvg" viewBox="0 0 42 42" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--g-${lv}-a)"/><stop offset="1" stop-color="var(--g-${lv}-b)"/></linearGradient></defs>` +
+      `<circle cx="21" cy="21" r="18.5" fill="none" stroke="var(--track)" stroke-width="3"/>` +
+      (p != null ? `<circle cx="21" cy="21" r="18.5" fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.max(0.02, Math.min(1, p / 100)))}" transform="rotate(-90 21 21)"/>` : "") + `</svg>` +
+      `<span class="core">${anchorSVG(10, 12, "#fff", 1.4)}</span>` +
+      (a ? `<span class="fl">${flagSVG(a.flag, 8)}</span>` : "") +
+      (fresh ? `<span class="b fresh" aria-hidden="true"><svg class="ic" style="width:10px;height:10px;stroke-width:3" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></span>` : "") +
+      ((p ?? 0) >= 90 ? `<span class="b crit" aria-hidden="true">!</span>` : "");
+    wake();
+  }
+  function wake() {
+    fab.classList.remove("idle"); clearTimeout(idleTimer);
+    if (S?.config.floatingFade) idleTimer = setTimeout(() => fab.classList.add("idle"), 4000);
+  }
+
+  // mousedown starts a window drag once the pointer moves; a click without movement opens the main window.
+  let down = null;
+  fab.addEventListener("pointerdown", (e) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY, dragged: false }; wake(); });
+  fab.addEventListener("pointermove", (e) => {
+    if (!down || down.dragged) return;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 3) {
+      down.dragged = true;
+      try { window.__TAURI__.window.getCurrentWindow().startDragging(); } catch (_) {}
+    }
+  });
+  fab.addEventListener("pointerup", () => { const d = down; down = null; if (d && !d.dragged) invoke("open_main_near_button").catch(() => {}); });
+  fab.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); invoke("open_main_near_button").catch(() => {}); } });
+  fab.addEventListener("mouseenter", wake); fab.addEventListener("mousemove", wake);
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  listen("state", (e) => { S = e.payload; render(); });
+  invoke("get_state").then((s) => { S = s; render(); });
+  setInterval(render, 30000);
+</script>
+</body>
+</html>

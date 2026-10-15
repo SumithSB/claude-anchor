@@ -4,6 +4,7 @@ This guide walks through the common tasks in Claude Anchor 0.3. For what the app
 
 Contents:
 
+- [Windows and Linux](#windows-and-linux)
 - [First run](#first-run)
 - [The menu](#the-menu)
 - [Adding accounts](#adding-accounts)
@@ -16,6 +17,21 @@ Contents:
 - [Floating button](#floating-button)
 - [Continuing a conversation](#continuing-a-conversation)
 - [Troubleshooting](#troubleshooting)
+
+## Windows and Linux
+
+The Windows and Linux app does the same work as the macOS app: accounts, folder rules, limits, usage and Continue. Most tasks in this guide work the same way. These are the differences.
+
+- **Tray icon instead of menu bar.** The anchor is in the system tray. Click it to open the menu. On Linux the tray sends no click events, so use **Open** in its right-click menu. On Windows the icon may be under the overflow arrow (^) until you pin it to the taskbar.
+- **Right-click menu.** It has Open, Floating button, Start at login and Quit.
+- **Keep window open instead of pop-out.** The pin button in the header keeps the menu open when you click somewhere else. It does not open a separate panel.
+- **Ctrl+Alt+A instead of ⌥⌘A.** It shows or hides the floating button. Wayland has no floating button and no hotkey.
+- **Floating button opens the main window.** Clicking the button opens the full menu next to it. There is no glance card.
+- **Continue opens a terminal.** On Windows it opens Windows Terminal if it is installed, or else a new PowerShell window. On Linux it uses the first terminal it finds. Set the `TERMINAL` environment variable to choose one.
+- **Recycle Bin instead of Trash.** On Windows, removing an account moves its folder to the Recycle Bin. On Linux it goes to Trash.
+- **Restart terminals after install.** Open a new terminal before you run `claude`. A terminal that was already open does not load the shell hook.
+- **Routed shells.** `claude` is routed in bash, zsh and PowerShell. cmd.exe and fish are not routed. In those shells, run `anchor exec -- claude` with the full path to `anchor`.
+- **Use the `anchor` CLI from a terminal.** Account, rule, limit and usage commands are listed in the [command line section](../README.md#command-line-windows-and-linux) of the README.
 
 ## First run
 

@@ -14,7 +14,7 @@ Replace `X.Y.Z` with the new version (for example `0.3.1`) everywhere below.
 Edit `Resources/Info.plist` on a branch:
 
 - `CFBundleShortVersionString`: the version, `X.Y.Z`.
-- `CFBundleVersion`: the build number. Increase it by one on every release. 0.3.2 is build `6`.
+- `CFBundleVersion`: the build number. Increase it by one on every release. 0.4.0 is build `7`.
 
 ```sh
 /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString X.Y.Z' Resources/Info.plist
@@ -103,3 +103,17 @@ The output must match the value in the cask.
 - **`brew upgrade` says the cask is already current.** Run `brew update` first, then check that the tap has the new `version` line.
 - **Checksum mismatch in Homebrew.** The `sha256` in the cask does not match the zip. Rebuild or re-download the zip from the release, then update the cask.
 - **The installer builds from source instead of downloading.** The release is missing the `.zip.sha256` asset, or the names don't match the version.
+
+## Windows and Linux artifacts
+
+These are built by CI, not by hand. Pushing the `vX.Y.Z` tag runs `.github/workflows/release-cross.yml` (or run it from the Actions tab with the existing tag as input). The tag sets the version in `cross/*/Cargo.toml` and `cross/tray/tauri.conf.json` for the build, so those files do not need a bump for the release to be named correctly.
+
+It uploads to the release for the tag (creating it, not as a draft, if it does not exist yet; if you create the release by hand in step 6, do it before pushing the tag or just attach the macOS files to the one CI made):
+
+- Windows: `Claude Anchor_X.Y.Z_x64-setup.exe` (NSIS, per-user), `Claude Anchor_X.Y.Z_x64_en-US.msi`, `anchor-X.Y.Z-windows-x86_64.zip` (the `anchor.exe` CLI).
+- Linux: `Claude Anchor_X.Y.Z_amd64.AppImage`, `.deb`, `anchor-X.Y.Z-linux-x86_64.tar.gz` (the `anchor` CLI).
+- A `.sha256` next to each of those, in the same `<hash>  <file>` format as the macOS one.
+
+`install.sh` (Linux) and `install.ps1` find assets by suffix (`.AppImage`, `-setup.exe`, `linux-x86_64.tar.gz`, `windows-x86_64.zip`, each plus `.sha256`) and the macOS path only looks at `ClaudeAnchor-*.zip`, so keep those names. GitHub turns spaces in asset names into dots. Windows builds are unsigned, so SmartScreen warns on first run.
+
+Verify on a clean machine or VM, with a throwaway home: run `install.sh` on Linux and `install.ps1` on Windows, then `anchor which` in a routed folder.

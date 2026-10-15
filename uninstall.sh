@@ -18,6 +18,25 @@ YES=0
 
 step() { echo "==> $*"; }
 
+if [ "$(uname -s)" = Linux ]; then
+  step "Quitting $APP_NAME"
+  pkill -f claude-anchor.AppImage >/dev/null 2>&1 || true
+  pkill -x claude-anchor >/dev/null 2>&1 || true
+  if [ -x "$AHOME/bin/anchor" ]; then
+    step "Removing shell hook and editor integration"
+    "$AHOME/bin/anchor" uninstall || true
+  fi
+  step "Removing the app"
+  # tauri-plugin-autostart writes <app name>.desktop (the product name) to the XDG autostart dir
+  ADIR="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+  rm -f "$HOME/.local/bin/claude-anchor.AppImage" "$HOME/.local/bin/claude-anchor" \
+    "$HOME/.local/share/applications/claude-anchor.desktop" \
+    "$ADIR/$APP_NAME.desktop" "$ADIR/claude-anchor.desktop"
+  [ -d "$AHOME" ] && step "Kept $AHOME (settings, routes, usage history, accounts); delete it to remove them"
+  echo "Done. ~/.claude was not touched."
+  return 0
+fi
+
 step "Quitting $APP_NAME"
 osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || true
 

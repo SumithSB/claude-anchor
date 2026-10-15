@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Claude Anchor</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app" aria-live="off"></div>
+<script type="module">
+  if (!window.__TAURI__) (await import("./mock.js")).installMock();
+  await import("./app.js");
+</script>
+</body>
+</html>

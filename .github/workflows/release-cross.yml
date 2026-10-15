@@ -1,0 +1,107 @@
+name: release-cross
+
+# Windows and Linux artifacts for a release. The macOS zip is still packaged by hand (docs/RELEASING.md).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and upload to (for example v0.4.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Version from tag
+        run: |
+          V="${TAG#v}"
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          sed -i "0,/^version = \".*\"/s//version = \"$V\"/" cross/core/Cargo.toml cross/tray/Cargo.toml
+          jq --arg v "$V" '.version = $v' cross/tray/tauri.conf.json > tauri.conf.tmp
+          mv tauri.conf.tmp cross/tray/tauri.conf.json
+
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cross
+
+      - name: Sidecar (Linux)
+        if: runner.os == 'Linux'
+        run: cross/tray/scripts/prepare-sidecar.sh
+      - name: Sidecar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cross\tray\scripts\prepare-sidecar.ps1
+
+      - name: Build and upload bundles
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: cross/tray
+          tagName: ${{ env.TAG }}
+          releaseName: Claude Anchor ${{ env.VERSION }}
+          releaseDraft: false
+          prerelease: false
+          args: --bundles ${{ matrix.bundles }}
+
+      # tauri-action makes no checksums; write one per installer, in the macOS `<hash>  <file>` format.
+      - name: Checksums for installers
+        env:
+          PATHS: ${{ steps.tauri.outputs.artifactPaths }}
+        run: |
+          echo "$PATHS" | jq -r '.[]' | tr -d '\r' | grep -E '\.(AppImage|deb|msi)$|-setup\.exe$' | while IFS= read -r f; do
+            f="$(cygpath -u "$f" 2>/dev/null || echo "$f")"
+            d="$(dirname "$f")"; b="$(basename "$f")"
+            (cd "$d" && sha256sum "$b" > "$b.sha256")
+            gh release upload "$TAG" "$f.sha256" --clobber
+          done
+
+      - name: CLI archive (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          N="anchor-$VERSION-linux-x86_64.tar.gz"
+          tar -C cross/target/release -czf "$N" anchor
+          sha256sum "$N" > "$N.sha256"
+          gh release upload "$TAG" "$N" "$N.sha256" --clobber
+      - name: CLI archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $n = "anchor-$env:VERSION-windows-x86_64.zip"
+          Compress-Archive -Path cross\target\release\anchor.exe -DestinationPath $n -Force
+          $h = (Get-FileHash -Algorithm SHA256 $n).Hash.ToLower()
+          "$h  $n" | Out-File -Encoding ascii "$n.sha256"
+          gh release upload $env:TAG $n "$n.sha256" --clobber
