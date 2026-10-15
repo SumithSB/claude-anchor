@@ -67,7 +67,7 @@ Settings has three cards:
 2. Sign in with the Claude account you want to add. Each extra account gets its own folder under `~/.claude-anchor/accounts/`.
 3. The account appears as a berth in the harbor switcher. Its limits start showing after the next refresh.
 
-Each account's login is kept in the Keychain as Claude Code's own item. Use an account's ⋯ menu to rename it, change its flag, reorder it with **Move up** and **Move down**, or remove it. Its history stays in `~/.claude-anchor/accounts/` until you delete it.
+Each account's login is kept by Claude Code itself: in the Keychain on macOS, in the account's `.credentials.json` on Windows and Linux. Use an account's ⋯ menu to rename it, change its flag, reorder it with **Move up** and **Move down**, or remove it. Its history stays in `~/.claude-anchor/accounts/` until you delete it.
 
 ## Switching the default account
 
@@ -206,7 +206,7 @@ After that, `brew upgrade --cask claude-anchor` works. Your settings and account
 - Look at the **Updated** line. If it is amber, the data is old.
 - Click the refresh button.
 - Check **Settings > Refresh limits**. If it is set to **Manual only**, the numbers change only when you refresh.
-- Make sure the account is signed in to Claude Code. The app reads the login that Claude Code keeps in the Keychain, and it never refreshes tokens itself. Run `claude` once in that account; Claude Code refreshes the token.
+- Make sure the account is signed in to Claude Code. The app reads the login that Claude Code keeps (the Keychain on macOS, `.credentials.json` on Windows and Linux), and it never refreshes tokens itself. Run `claude` once in that account; Claude Code refreshes the token.
 - If the network is down or `api.anthropic.com` can't be reached, the numbers stay old until it comes back.
 
 ### A session is on the wrong account

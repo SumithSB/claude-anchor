@@ -18,6 +18,12 @@ The screenshots are taken from the current build. Dark mode, six accounts, first
 
 Unofficial and not affiliated with Anthropic. Free, MIT licensed. macOS 14+, Windows 10/11 (x64) and Linux (x86_64).
 
+## What's new in 0.4
+
+- **Windows and Linux.** A tray app with the same harbor switcher, limit rings, usage, last conversation card, Accounts, Rules and Settings panes, and floating button. Install with [`install.ps1`](#windows) or [`install.sh`](#linux).
+- **`anchor` command line** on Windows and Linux for routing, limits, usage, accounts, rules and Continue from a terminal. See [Command line](#command-line-windows-and-linux).
+- **Routing beyond zsh.** On Windows and Linux, `claude` is routed in bash, zsh and PowerShell, and in VS Code and Cursor.
+
 ## What's new in 0.3
 
 - **Clay redesign.** Warm paper (light) and charcoal (dark) surfaces with a clay-orange accent. Rings show the 5-hour and weekly limits. Bottom navigation: Accounts, Rules, Settings, Quit.
@@ -52,7 +58,7 @@ curl -fsSLo install.sh https://raw.githubusercontent.com/SumithSB/claude-anchor/
 less install.sh && bash install.sh
 ```
 
-**What it touches, in short:** it reads Claude Code's logins from your Keychain only to show your limits, and sends them only to `api.anthropic.com`. It never copies or stores them. There's no telemetry or analytics. On disk it writes to `~/.claude-anchor`, one line in `~/.zshrc`, and one setting in your VS Code and Cursor settings (backed up first). Your existing `~/.claude` is never changed. The full list is under [Files it touches](#files-it-touches).
+**What it touches, in short (macOS):** it reads Claude Code's logins from your Keychain only to show your limits, and sends them only to `api.anthropic.com`. It never copies or stores them. There's no telemetry or analytics. On disk it writes to `~/.claude-anchor`, one line in `~/.zshrc`, and one setting in your VS Code and Cursor settings (backed up first). Your existing `~/.claude` is never changed. On Windows and Linux it reads the same logins from Claude Code's own `.credentials.json` instead, and adds its line to your bash, zsh or PowerShell profile. The full list is under [Files it touches](#files-it-touches).
 
 The app is ad-hoc signed, not notarized by Apple. The installer and the Homebrew cask clear the download quarantine so it opens normally. If you download the zip by hand, macOS blocks the first launch: open System Settings > Privacy & Security and click Open Anyway.
 
@@ -138,7 +144,7 @@ Settings and accounts live in `~/.claude-anchor` and are untouched by upgrades. 
 - The primary account stays in `~/.claude`, with `CLAUDE_CONFIG_DIR` unset.
 - `~/.claude-anchor/routes` maps folders to accounts (longest matching folder wins, plus a `default` line). A zsh `claude` function reads it and sets `CLAUDE_CONFIG_DIR` for the current folder.
 - VS Code and Cursor are routed through `claudeCode.claudeProcessWrapper`, which points at a small wrapper script in `~/.claude-anchor/bin`.
-- Limits come from Anthropic's OAuth usage endpoint, using the token Claude Code already keeps in the Keychain, read with `/usr/bin/security`. Tokens are never stored, logged, or sent anywhere except `api.anthropic.com`. The app never refreshes tokens; Claude Code does that.
+- Limits come from Anthropic's OAuth usage endpoint, using the token Claude Code already keeps: in the Keychain on macOS, read with `/usr/bin/security`, and in `<config dir>/.credentials.json` on Windows and Linux. Tokens are never stored, logged, or sent anywhere except `api.anthropic.com`. The app never refreshes tokens; Claude Code does that.
 
 ## Using it
 
@@ -327,9 +333,10 @@ Removes the app, the `.desktop` entries, the autostart entry, the shell hook lin
 ## Limitations
 
 - Unofficial; not affiliated with or endorsed by Anthropic.
-- Relies on undocumented Claude Code behaviour that may change: Keychain service naming, the usage endpoint, and the transcript layout.
+- Relies on undocumented Claude Code behaviour that may change: Keychain service naming, the `.credentials.json` location on Windows and Linux, the usage endpoint, and the transcript layout.
 - A running session can't change account. Claude Code picks its config dir and Keychain login once, at startup, and nothing outside the process can change that. Changing the default account or a folder rule affects new sessions only. To move a conversation, use **Continue on <Name>** in the Last conversation card, which copies the transcript and resumes it in a new process (in Terminal). Running `/login` inside a session replaces that account's login; it doesn't switch accounts.
 - Ad-hoc signed, not notarized. The installer clears the quarantine flag; a manually downloaded zip may need right-click, Open.
+- Windows and Linux builds are unsigned, and are newer than the macOS app. Please report tray, window placement or terminal problems as issues.
 
 ## Roadmap
 
