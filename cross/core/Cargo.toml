@@ -1,6 +1,6 @@
 [package]
 name = "anchor-core"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 description = "Claude Anchor core for Windows and Linux: routing, limits, usage, editor integration"
 license = "MIT"

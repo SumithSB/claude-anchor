@@ -41,6 +41,8 @@ jobs:
         shell: pwsh
         run: |
           cargo build -p anchor-core
+          # Must not need the Visual C++ runtime (see cross/.cargo/config.toml).
+          if (Select-String -Path target\debug\anchor.exe -Pattern 'VCRUNTIME140.dll' -SimpleMatch -Quiet) { Write-Error 'anchor.exe depends on VCRUNTIME140.dll'; exit 1 }
           target\debug\anchor.exe install
           $t = pwsh -Command "(Get-Command claude).CommandType"
           $t

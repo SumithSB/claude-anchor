@@ -1,0 +1,4 @@
+# Link the C runtime statically on Windows, so anchor.exe and the tray app start on PCs
+# without the Visual C++ Redistributable (otherwise they exit silently with 0xC0000135).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

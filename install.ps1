@@ -57,6 +57,7 @@ function Install-ClaudeAnchor {
       $out = & $anchor install 2>&1 | ForEach-Object { "$_" }
       $code = $LASTEXITCODE; $ErrorActionPreference = $prev
       $out | ForEach-Object { Write-Host "  $_" }
+      if ($code -eq -1073741515) { throw 'anchor.exe could not start: a system DLL is missing (0xC0000135). Install the Microsoft Visual C++ Redistributable (x64) from https://aka.ms/vs/17/release/vc_redist.x64.exe, then run this again.' }
       if ($code -ne 0) { throw "anchor install failed (exit $code): $($out -join ' ')" }
     }
 
