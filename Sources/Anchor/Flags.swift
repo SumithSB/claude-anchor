@@ -155,18 +155,24 @@ enum FlagArt {
     private var used: Set<SignalFlag> { Set(model.accounts.map(\.flag)) }
 
     var body: some View {
-        PaneScaffold(title: "Accounts", height: 480) {
-            Section {
-                ForEach(model.accounts) { row($0) }.onMove { model.moveAccounts(fromOffsets: $0, toOffset: $1) }
-            } footer: {
+        PaneScaffold(title: "Accounts") {
+            PaneSection(title: "Signed in", footer: "New sessions start on the default account. Use ⋯ to rename, change the flag or reorder.") {
+                ForEach(Array(model.accounts.enumerated()), id: \.element.id) { i, a in
+                    if i > 0 { RowDivider() }
+                    row(a, index: i)
+                }
                 if !adding {
+                    RowDivider()
                     Button {
                         newName = ""; newFlag = SignalFlag.allCases.first { !used.contains($0) } ?? .a; adding = true
-                    } label: { Label("Add account", systemImage: "plus") }
-                    .buttonStyle(.borderless).padding(.top, 4)
+                    } label: {
+                        Label("Add account", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
+                            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            if adding { Section { addForm } }
+            if adding { PaneSection(title: "New account") { addForm.padding(.vertical, 10) } }
         }
         .sheet(item: $removing) { RemoveSheet(account: $0) }
         .confirmationDialog("Sign out of Claude Code?", isPresented: $signOut) {
@@ -174,7 +180,7 @@ enum FlagArt {
         }
     }
 
-    private func row(_ a: Account) -> some View {
+    private func row(_ a: Account, index i: Int) -> some View {
         HStack(spacing: 10) {
             FlagView(flag: a.flag, size: 16)
             VStack(alignment: .leading, spacing: 1) {
@@ -199,17 +205,22 @@ enum FlagArt {
                 } else if let e = a.email { Text(e).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
             }
             Spacer(minLength: 6)
-            if let p = a.plan, !a.pending { Text(p.capitalized).font(.subheadline).foregroundStyle(.secondary).fixedSize() }
+            if let p = a.plan, !a.pending {
+                Text(p.capitalized).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.secondary).fixedSize()
+                    .padding(.horizontal, 7).padding(.vertical, 2).background(Capsule().fill(Clay.surface2))
+            }
             RowMenu(label: "Options for \(a.name)") {
                 Button("Rename") { draft = a.name; editing = a.id }
                 Button("Change flag") { flagFor = a.id }
                 Button("Sign in again") { model.signIn(a.id) }
+                if i > 0 { Button("Move up") { model.moveAccounts(fromOffsets: [i], toOffset: i - 1) } }
+                if i < model.accounts.count - 1 { Button("Move down") { model.moveAccounts(fromOffsets: [i], toOffset: i + 2) } }
                 Divider()
                 if a.isPrimary { Button("Sign out") { signOut = true } }
                 else { Button("Remove \(a.name)", role: .destructive) { removing = a } }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 9)
         .popover(isPresented: Binding(get: { flagFor == a.id }, set: { if !$0 { flagFor = nil } })) {
             FlagGrid(flag: Binding(get: { a.flag }, set: { model.setFlag(a.id, $0); flagFor = nil }), used: used)
         }

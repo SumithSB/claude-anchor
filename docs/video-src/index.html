@@ -1,0 +1,344 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Claude Anchor tour</title>
+<!-- Tour composition. Every UI pixel is a real SwiftUI render from assets/ (see README.md).
+     Driven by window.seek(t) so render.js can capture it frame by frame. -->
+<style>
+  :root { --paper:#F5F3EE; --ink:#2B2622; --muted:#6E655C; --clay:#B9583A; --accent:#D97757; --teal:#2A7262; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:1280px; height:720px; overflow:hidden; background:var(--paper); }
+  body { font-family:-apple-system,"SF Pro Display","Helvetica Neue",sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; }
+  #stage { position:absolute; inset:0; overflow:hidden; background:radial-gradient(1200px 700px at 75% 40%, #FBF9F5 0%, #F1EDE5 60%, #E9E3D8 100%); }
+  #night { position:absolute; inset:0; background:radial-gradient(1200px 700px at 75% 40%, #2A2825 0%, #1D1C1A 70%, #151413 100%); opacity:0; }
+  .abs { position:absolute; }
+  img { display:block; }
+  /* menu bar */
+  #menubar { left:0; top:0; width:1280px; height:28px; background:rgba(255,255,255,.62); border-bottom:1px solid rgba(0,0,0,.06);
+             display:flex; align-items:center; justify-content:flex-end; gap:18px; padding:0 18px; font-size:13px; font-weight:500; }
+  #menubar .l { position:absolute; left:18px; display:flex; gap:20px; }
+  #mbicon { width:26px; height:22px; border-radius:5px; display:flex; align-items:center; justify-content:center; }
+  #mbicon img { width:18px; height:18px; }
+  /* captions */
+  .cap { position:absolute; left:84px; top:250px; width:620px; opacity:0; }
+  .cap h1 { font-size:50px; line-height:1.06; font-weight:700; letter-spacing:-1.2px; }
+  .cap p { margin-top:18px; font-size:22px; line-height:1.4; color:var(--muted); max-width:560px; }
+  .cap .k { display:inline-block; font-size:14px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--clay); margin-bottom:16px; }
+  .cap.center { left:0; width:1280px; top:52px; text-align:center; }
+  .cap.center p { margin:12px auto 0; max-width:900px; }
+  .cap.center h1 { font-size:44px; }
+  .dark .cap h1 { color:#F2EEE8; } .dark .cap p { color:#B7AEA4; }
+  /* windows */
+  .win { position:absolute; overflow:hidden; border-radius:12px; background:var(--paper);
+         box-shadow:0 0 0 .5px rgba(0,0,0,.18), 0 18px 50px rgba(60,40,20,.20), 0 4px 12px rgba(60,40,20,.10); }
+  #pop { left:860px; top:36px; width:340px; height:640px; transform-origin:170px 0; }
+  #popin { position:absolute; left:0; top:0; width:340px; }
+  #popin img { position:absolute; left:0; top:-2px; width:340px; }
+  #popin img.t0 { top:0; }   /* these renders have no transparent 2 pt band at the top */
+  #harbor { position:absolute; left:16px; top:73.5px; width:308px; height:220px; overflow:hidden; border-radius:18px; }
+  #harbor svg { display:block; overflow:visible; }
+  #spin { position:absolute; left:301px; top:29px; width:18px; height:18px; border-radius:50%;
+          background:url(assets/home-personal.png) no-repeat; background-size:340px auto; background-position:-301px -29px; }
+  .ring { position:absolute; border:3px solid var(--teal); border-radius:16px; opacity:0; }
+  #panes { left:0; top:0; }
+  #panes .win { width:340px; height:640px; transform-origin:50% 0; }
+  #panes img { width:340px; }
+  #popout { left:800px; top:70px; width:400px; height:600px; transform-origin:300px 0; }
+  #popout img { width:400px; }
+  /* floating scene */
+  #desk { left:520px; top:70px; width:700px; height:600px; border-radius:12px; background:#FFFFFF; opacity:0;
+          box-shadow:0 0 0 .5px rgba(0,0,0,.14), 0 18px 50px rgba(60,40,20,.14); overflow:hidden; }
+  #desk .bar { height:34px; background:#F3F1EC; border-bottom:1px solid #E6E1D8; display:flex; gap:8px; align-items:center; padding-left:14px; }
+  #desk .bar i { width:12px; height:12px; border-radius:50%; background:#DDD6CB; display:block; }
+  #desk .code { padding:26px 30px; }
+  #desk .code b { display:block; height:11px; border-radius:6px; margin:0 0 15px; background:#ECE7DF; }
+  #fb { left:1040px; top:520px; width:108px; height:108px; }
+  #fb img { position:absolute; inset:0; width:108px; height:108px; }
+  #glow { position:absolute; left:20px; top:18px; width:68px; height:68px; border-radius:50%; box-shadow:0 0 0 0 rgba(42,114,98,.0); }
+  #tip { width:340px; }
+  #quick { width:280px; border-radius:16px; overflow:hidden; box-shadow:0 0 0 .5px rgba(0,0,0,.16), 0 18px 46px rgba(60,40,20,.22); transform-origin:100% 100%; }
+  #quick img { width:280px; display:block; }
+  #quick img + img { position:absolute; left:0; top:0; }
+  /* end card */
+  #end { left:0; top:0; width:1280px; height:720px; display:flex; flex-direction:column; align-items:center; justify-content:center; opacity:0; }
+  #logo { width:80px; height:80px; border-radius:18px; overflow:hidden; box-shadow:0 10px 30px rgba(185,88,58,.30); }
+  #logo div { width:80px; height:80px; background:url(assets/home-work.png) no-repeat; background-size:971px auto; background-position:-48.6px -73.6px; }
+  #end h1 { margin-top:26px; font-size:60px; font-weight:700; letter-spacing:-1.5px; }
+  #end h1 span { color:var(--muted); font-weight:500; }
+  #end p { margin-top:10px; font-size:22px; color:var(--muted); }
+  #end code { margin-top:30px; font:500 22px/1 "SF Mono",Menlo,monospace; background:#2B2622; color:#F5F3EE; padding:16px 24px; border-radius:12px; }
+  #end code s { text-decoration:none; color:var(--accent); }
+  /* cursor */
+  #cursor { left:0; top:0; width:26px; height:34px; z-index:50; transform-origin:3px 3px; }
+  #click { width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; border:2.5px solid var(--accent); opacity:0; z-index:49; }
+</style></head>
+<body><div id="stage">
+  <div id="night"></div>
+
+  <div id="menubar" class="abs">
+    <div class="l"><b>&#63743;</b><span style="font-weight:700">Terminal</span><span>Shell</span><span>Edit</span><span>View</span></div>
+    <span id="mbicon"><img src="assets/menubar-icon.png" alt=""></span><span>Wed 9:41</span>
+  </div>
+
+  <div class="cap" id="c1"><div class="k">Claude Anchor 0.3</div><h1>Every limit at a glance</h1><p>5-hour and weekly limits for every Claude Code account, right in the menu bar.</p></div>
+  <div class="cap" id="c2"><h1>Light or dark</h1><p>Follows your system appearance.</p></div>
+  <div class="cap" id="c3"><h1>Fresh 5-hour windows, spotted</h1><p>Anchor tells you when another account has a full window waiting.</p></div>
+  <div class="cap" id="c4"><h1>Drop the anchor to switch accounts</h1><p>Drag it onto any account. New sessions start there.</p></div>
+  <div class="cap" id="c5"><h1>Refresh any time</h1><p>One click fetches live usage for every account.</p></div>
+  <div class="cap center" id="c6"><h1>Accounts, folder rules, settings</h1><p>Route each folder to its own account. One calm style throughout.</p></div>
+  <div class="cap" id="c7"><h1>Pop it out, quietly</h1><p>A small floating panel. No Dock icon, and it never steals focus.</p></div>
+  <div class="cap" id="c8" style="top:220px;width:440px"><h1>A floating anchor that stays out of the way</h1><p>Its ring is your 5-hour use. It glows teal when a fresh window is waiting.</p></div>
+
+  <div id="pop" class="win">
+    <div id="popin">
+      <img id="hWork" src="assets/home-work.png" alt="">
+      <img id="hWorkBare" src="assets/home-work-bare.png" alt="" style="opacity:0">
+      <img id="hDrag" src="assets/home-drag.png" alt="" style="opacity:0">
+      <img id="hDrag0" src="assets/home-drag-work.png" alt="" style="opacity:0">
+      <img id="hDrag1" src="assets/home-drag-client.png" alt="" style="opacity:0">
+      <img id="hDrag2" src="assets/home-drag-personal.png" alt="" style="opacity:0">
+      <img id="hPersBare" class="t0" src="assets/home-personal-bare.png" alt="" style="opacity:0">
+      <img id="hPers" class="t0" src="assets/home-personal.png" alt="" style="opacity:0">
+      <img id="hDark" src="assets/home-work-dark.png" alt="" style="opacity:0">
+      <!-- harbor overlay: the app's chain, hull and anchor redrawn from Harbor.swift's geometry (HarborView, width 308) -->
+      <div id="harbor" style="opacity:0">
+        <svg width="308" height="220" viewBox="0 0 308 220">
+          <defs>
+            <filter id="ash" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity=".28"/></filter>
+            <filter id="aglow" x="-80%" y="-80%" width="260%" height="260%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#D97757" flood-opacity=".8"/></filter>
+          </defs>
+          <ellipse id="rip1" fill="none" stroke="#D97757" stroke-width="1.5"/>
+          <ellipse id="rip2" fill="none" stroke="#D97757" stroke-width="1"/>
+          <path id="chainS" fill="none" stroke="rgba(0,0,0,.22)" stroke-width="5" stroke-linecap="round"/>
+          <path id="chain" fill="none" stroke="#8A7F72" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 3"/>
+          <rect x="112.5" y="-11.5" width="83" height="23" rx="8.5" fill="#F0EDE6" stroke="rgba(0,0,0,.10)"/>
+          <circle cx="154" cy="6" r="4.5" fill="#D97757"/>
+          <g id="aGlow"><g id="aShadow" filter="url(#ash)"><g id="anchor">
+            <path id="aPath" fill="none" stroke="#D97757" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </g></g></g>
+        </svg>
+      </div>
+      <div id="spin" style="opacity:0"></div>
+      <div class="ring" id="rFresh" style="left:13px;top:307px;width:315px;height:100px"></div>
+      <div class="ring" id="rTag" style="left:274px;top:209px;width:52px;height:21px;border-radius:9px;border-width:2px"></div>
+    </div>
+  </div>
+
+  <div id="panes" class="abs">
+    <div class="win" id="p1" style="left:180px;top:178px"><img src="assets/accounts.png" alt=""></div>
+    <div class="win" id="p2" style="left:470px;top:178px"><img src="assets/rules.png" alt=""></div>
+    <div class="win" id="p3" style="left:760px;top:178px"><img src="assets/settings.png" alt=""></div>
+  </div>
+
+  <div id="popout" class="win"><img src="assets/popout.png" alt=""></div>
+
+  <div id="desk" class="abs"><div class="bar"><i></i><i></i><i></i></div><div class="code" id="codelines"></div></div>
+  <img id="tip" class="abs" src="assets/tip.png" alt="" style="opacity:0">
+  <div id="quick" class="abs" style="opacity:0"><img id="qWork" src="assets/quick-work.png" alt=""><img id="qPers" src="assets/quick-personal.png" alt="" style="opacity:0"></div>
+  <div id="fb" class="abs" style="opacity:0">
+    <div id="glow"></div>
+    <img id="bCalm" src="assets/button-calm.png" alt="">
+    <img id="bWork" src="assets/button-work.png" alt="" style="opacity:0">
+    <img id="bPers" src="assets/button-personal.png" alt="" style="opacity:0">
+  </div>
+
+  <div id="end" class="abs">
+    <div id="logo"><div></div></div>
+    <h1>Claude Anchor <span>v0.3</span></h1>
+    <p>Every Claude Code account, one calm app.</p>
+    <code><s>$</s> brew install --cask sumithsb/tap/claude-anchor</code>
+  </div>
+
+  <div id="click" class="abs"></div>
+  <svg id="cursor" class="abs" viewBox="0 0 26 34"><path d="M3 2 L3 26 L9 20.5 L13.2 30.5 L17.4 28.7 L13.3 19 L21.5 19 Z" fill="#111" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const out = x => 1 - Math.pow(1 - x, 3);
+const seg = (t, a, b, f = ease) => f(clamp((t - a) / (b - a)));
+const lerp = (a, b, k) => a + (b - a) * k;
+// visible between a and b with fade d at both ends
+const win = (t, a, b, d = .35) => Math.min(seg(t, a, a + d, out), 1 - seg(t, b - d, b));
+
+{ const w = [88, 64, 72, 40, 80, 56, 30, 70, 62, 48, 84, 36, 66, 52, 74, 44, 60, 28];
+  $('codelines').innerHTML = w.map((p, i) => `<b style="width:${p}%;margin-left:${(i % 4 === 0 ? 0 : (i % 3) * 22)}px"></b>`).join(''); }
+
+// Scene boundaries (seconds)
+const S = { glance: 0, dark: 3.6, fresh: 5.0, sw: 7.4, refresh: 11.4, panes: 13.4, popout: 16.2, float: 18.8, end: 24.0, total: 26.2 };
+const POP = { x: 860, y: 36 };
+// ---- drag the anchor (harbor coordinates; mirrors HarborView: berth x = 308/3*(i+.5), rest y 132) ----
+const HW = 308, HX = HW / 2, REST = [0, 1, 2].map(i => HW / 3 * (i + .5)), DY = 132;
+function harborToStage(x, y) { return [POP.x + 16 + x, POP.y + 73.5 + y]; }
+const D = { grab: S.sw + .9, rel: S.sw + 2.55, bare: S.sw + .7, done: S.sw + 3.6 };
+const dragKeys = [[D.grab, REST[0], DY], [D.grab + .3, 62, 108], [D.grab + .95, 150, 90], [D.rel - .2, 252, 104], [D.rel, 257, 106]];
+function spring(dt) {   // SwiftUI .spring(response: 0.42, dampingFraction: 0.5), released at rest
+  const w = 2 * Math.PI / .42, z = .5, wd = w * Math.sqrt(1 - z * z);
+  return Math.exp(-z * w * dt) * (Math.cos(wd * dt) + z * w / wd * Math.sin(wd * dt));
+}
+function anchorPos(t) {
+  if (t <= D.grab) return [REST[0], DY];
+  if (t < D.rel) {
+    for (let i = 0; i < dragKeys.length - 1; i++) {
+      const [t0, x0, y0] = dragKeys[i], [t1, x1, y1] = dragKeys[i + 1];
+      if (t <= t1) { const k = clamp((t - t0) / (t1 - t0)), kx = ease(k), ky = Math.sin(k * Math.PI / 2) ** 1.2; return [lerp(x0, x1, kx), lerp(y0, y1, i === 0 ? out(k) : k * k * (3 - 2 * k))]; }
+    }
+  }
+  const [, x0, y0] = dragKeys[dragKeys.length - 1], d = spring(t - D.rel);
+  return [REST[2] + (x0 - REST[2]) * d, DY + (y0 - DY) * d];
+}
+const dragging = t => t >= D.grab && t < D.rel;
+function hotAt(x, y) {   // HarborView.hotAt
+  if (y < 76) return null;
+  let hot = null, best = HW / 3 * .55 + 6;
+  REST.forEach((bx, i) => { const d = Math.abs(x - bx); if (d < best) { best = d; hot = i; } });
+  return hot;
+}
+const hotSegs = (() => {   // [from, to, berth] while dragging, sampled once
+  const segs = []; let cur = null;
+  for (let t = D.grab; t <= D.rel; t += .005) {
+    const h = hotAt(...anchorPos(t));
+    if (h !== (cur && cur[2])) { if (cur) cur[1] = t; cur = h === null ? null : [t, D.rel, h]; if (cur) segs.push(cur); }
+  }
+  return segs;
+})();
+function glyph() {   // AnchorGlyph in a 22x26 rect centred on the eye-frame origin (SwiftUI frame 40x40)
+  const w = 22, h = 26, x = 0, minX = -11, maxX = 11, minY = -13, maxY = 13, r = w * .14;
+  return `M${x + r},${minY + r} a${r},${r} 0 1,0 ${-2 * r},0 a${r},${r} 0 1,0 ${2 * r},0` +
+    `M${x},${minY + w * .28} L${x},${maxY}` +
+    `M${x - w * .3},${minY + h * .36} L${x + w * .3},${minY + h * .36}` +
+    `M${minX},${minY + h * .62} Q${x},${maxY + h * .42} ${maxX},${minY + h * .62}` +
+    `M${minX},${minY + h * .62} L${minX + w * .16},${minY + h * .56}` +
+    `M${maxX},${minY + h * .62} L${maxX - w * .16},${minY + h * .56}`;
+}
+document.getElementById('aPath').setAttribute('d', glyph());
+function drawHarbor(t) {
+  const [ax, ay] = anchorPos(t), drag = dragging(t);
+  const lift = drag ? seg(t, D.grab, D.grab + .15, out) : 1 - seg(t, D.rel, D.rel + .2, out);
+  // chain (HarborChain): hull (154,10) -> eye (ax, ay-16), sag shrinks with distance, -20 while dragged
+  const tx = ax, ty = ay - 16, sag = Math.max(8, 46 - Math.abs(tx - HX) * .12 - (drag ? 20 : 0));
+  const d = `M${HX},10 Q${(HX + tx) / 2},${(10 + ty) / 2 + sag} ${tx},${ty}`;
+  $('chain').setAttribute('d', d); $('chainS').setAttribute('d', d);
+  // tilt toward the hull like anchorView, plus a little sway from horizontal speed while dragged
+  const [px] = anchorPos(t - 1 / 30), vel = (ax - px) * 30;
+  const tilt = Math.atan2(ax - HX, Math.max(20, ay - 10)) * -40 / Math.PI + clamp(-vel * .035, -10, 10) * lift
+             + (drag ? Math.sin((t - D.grab) * 9) * 2.5 * lift : 0);
+  const sc = 1 + .12 * lift;
+  $('anchor').setAttribute('transform', `translate(${ax},${ay - 12}) rotate(${tilt}) scale(${sc}) translate(0,12)`);
+  $('aGlow').setAttribute('filter', lift > .02 ? 'url(#aglow)' : ''); $('aGlow').style.opacity = 1;
+  $('aGlow').querySelector('#aShadow').style.opacity = 1;
+  // splash rings at the water line where it docks (HarborRipple, easeOut 0.9 s)
+  const rt = seg(t, D.rel + .03, D.rel + .93, out), on = t > D.rel && rt < 1;
+  [['rip1', 6, 42, 0], ['rip2', 4, 30, .25]].forEach(([id, base, grow, delay]) => {
+    const k = Math.max(0, (rt - delay) / (1 - delay)), rx = base + grow * k;
+    const e = $(id); e.setAttribute('cx', REST[2]); e.setAttribute('cy', 66); e.setAttribute('rx', rx); e.setAttribute('ry', rx * .26);
+    e.style.opacity = on ? 1 - rt : 0;
+  });
+}
+
+// cursor path: [t, x, y]; holds between keys, eased moves
+const path = [
+  [0, 640, 420], [.65, 1030, 15], [1.3, 1030, 15], [1.9, 760, 470],
+  [S.sw + .05, 760, 470], [S.sw + .8, ...harborToStage(REST[0], 121)],
+  [S.sw + 3.0, ...harborToStage(REST[2], 121)], [S.refresh + .1, ...harborToStage(REST[2], 121)], [S.refresh + .6, POP.x + 310, POP.y + 42], [S.refresh + 1.3, POP.x + 310, POP.y + 42], [S.refresh + 1.9, 780, 520],
+  [S.float + .2, 900, 640], [S.float + 1.3, 1096, 572], [S.float + 2.3, 1096, 572], [S.float + 3.0, 902, 495], [S.float + 4.2, 902, 495], [S.float + 5.0, 900, 660]
+];
+const clicks = [.8, S.refresh + .75, S.float + 2.2, S.float + 3.2];
+const cursorShown = t => Math.max(win(t, 0, 2.2, .3), win(t, S.sw, S.refresh + 2.2, .3), win(t, S.float + .1, S.float + 5.0, .3));
+// sound cues for audio.py (render.js writes them to cues.json)
+window.CUES = () => ({ total: S.total, clicks, grab: D.grab, release: D.rel, land: D.rel + .11, fresh: [S.fresh + .3, S.float + .8],
+  whoosh: [.8, S.panes + .3, S.popout + .3, S.float + 2.25], spin: [S.refresh + .75, S.refresh + 1.8], end: S.end, dark: S.dark, scenes: S });
+
+function cursorAt(t) {
+  if (t >= D.grab - .02 && t < D.rel + .15) { const [x, y] = anchorPos(Math.min(t, D.rel)); return harborToStage(x, y - 11); }
+  for (let i = 0; i < path.length - 1; i++) {
+    const [t0, x0, y0] = path[i], [t1, x1, y1] = path[i + 1];
+    if (t <= t1) { const k = seg(t, t0, t1); return [lerp(x0, x1, k), lerp(y0, y1, k)]; }
+  }
+  const l = path[path.length - 1]; return [l[1], l[2]];
+}
+const op = (id, v) => { $(id).style.opacity = v; };
+const tf = (id, v) => { $(id).style.transform = v; };
+
+window.seek = function (t) {
+  // night (dark appearance beat)
+  const dk = Math.min(seg(t, S.dark, S.dark + .45), 1 - seg(t, S.fresh - .45, S.fresh));
+  op('night', dk); $('stage').classList.toggle('dark', dk > .5);
+  $('menubar').style.background = `rgba(${lerp(255, 40, dk)},${lerp(255, 38, dk)},${lerp(255, 36, dk)},.62)`;
+  $('menubar').style.color = dk > .5 ? '#EEE' : '#111';
+  $('mbicon').querySelector('img').style.filter = dk > .5 ? 'invert(1)' : 'none';
+  $('mbicon').style.background = (t > .78 && t < S.panes) || (t > S.popout - .1 && t < S.popout + 2.5) ? (dk > .5 ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.10)') : 'transparent';
+  op('menubar', 1 - seg(t, S.end - .4, S.end));
+
+  // captions
+  const caps = [['c1', 0.9, S.dark], ['c2', S.dark, S.fresh], ['c3', S.fresh, S.sw], ['c4', S.sw, S.refresh], ['c5', S.refresh, S.panes],
+                ['c6', S.panes, S.popout], ['c7', S.popout, S.float], ['c8', S.float, S.end]];
+  for (const [id, a, b] of caps) { const v = win(t, a, b, .4); op(id, v); tf(id, `translateY(${(1 - seg(t, a, a + .5, out)) * 18}px)`); }
+
+  // popover: opens on menubar click, leaves for the panes scene
+  const popIn = seg(t, .8, 1.2, out), popOut = seg(t, S.panes, S.panes + .4);
+  op('pop', popIn * (1 - popOut));
+  tf('pop', `translateY(${(1 - popIn) * -10 + popOut * -10}px) scale(${lerp(.97, 1, popIn)})`);
+  const scroll = 456 * (seg(t, 1.4, 2.5) - seg(t, 2.7, 3.4));
+  tf('popin', `translateY(${-scroll}px)`);
+  op('hDark', dk);
+  // drag scene: bare harbor + drawn anchor, mid-drag berth states, then the real Personal render
+  const inDrag = t >= D.bare && t < D.done;
+  op('hWork', 1); op('hWorkBare', inDrag ? 1 : 0); op('harbor', inDrag ? 1 : 0);
+  op('hDrag', t >= D.grab && t < D.rel + .25 ? Math.min(seg(t, D.grab, D.grab + .12), 1) : 0);
+  [0, 1, 2].forEach(i => {
+    let v = 0;
+    for (const [a, b, h] of hotSegs) if (h === i) v = Math.max(v, Math.min(seg(t, a, a + .15), 1 - seg(t, b, b + .15)));
+    op('hDrag' + i, t < D.rel + .25 ? v : 0);
+  });
+  op('hPersBare', inDrag ? seg(t, D.rel, D.rel + .25) : 0);
+  op('hPers', t >= D.done ? 1 : 0);
+  if (inDrag) drawHarbor(t);
+  // fresh highlight rings
+  const pulse = win(t, S.fresh + .3, S.sw - .1, .3) * (.6 + .4 * Math.sin((t - S.fresh) * 6));
+  op('rFresh', pulse); op('rTag', pulse);
+  // refresh spinner
+  const sp = seg(t, S.refresh + .75, S.refresh + 1.8);
+  op('spin', sp > 0 && sp < 1 ? 1 : 0); tf('spin', `rotate(${sp * 720}deg)`);
+
+  // panes fan in
+  [['p1', 0], ['p2', .12], ['p3', .24]].forEach(([id, d]) => {
+    const k = seg(t, S.panes + .3 + d, S.panes + .9 + d, out), o = seg(t, S.popout - .35, S.popout);
+    op(id, k * (1 - o)); tf(id, `translateY(${(1 - k) * 40}px) scale(.76)`);
+  });
+
+  // pop-out panel
+  const pk = seg(t, S.popout + .3, S.popout + .9, out), po = seg(t, S.float - .35, S.float);
+  op('popout', pk * (1 - po)); tf('popout', `translateY(${(1 - pk) * -30}px) scale(${lerp(.8, .9, pk)})`);
+  $('popout').querySelector('img').style.transform = `translateY(${-210 * seg(t, S.popout + 1.2, S.float - .3)}px)`;
+
+  // floating scene
+  const F = S.float, fin = win(t, F, S.end, .4);
+  op('desk', fin); tf('desk', `translateY(${(1 - seg(t, F, F + .5, out)) * 20}px)`);
+  op('fb', win(t, F + .3, S.end, .3)); tf('fb', `scale(${lerp(.6, 1, seg(t, F + .3, F + .7, out))})`);
+  const fresh = seg(t, F + .8, F + 1.1), anchored = seg(t, F + 3.3, F + 3.6);
+  op('bWork', fresh * (1 - anchored)); op('bPers', anchored); op('bCalm', 1 - fresh);
+  const g = fresh * (1 - anchored) * (.5 + .5 * Math.sin((t - F) * 5));
+  $('glow').style.boxShadow = `0 0 ${18 + 16 * g}px ${6 + 8 * g}px rgba(42,114,98,${.45 * fresh * (1 - anchored)})`;
+  const tipV = win(t, F + 1.3, F + 2.2, .2);
+  op('tip', tipV); $('tip').style.left = '700px'; $('tip').style.top = '548px';
+  const qk = seg(t, F + 2.25, F + 2.6, out);
+  op('quick', qk * (1 - seg(t, S.end - .4, S.end)));
+  $('quick').style.left = '762px'; $('quick').style.top = '160px';
+  tf('quick', `scale(${lerp(.9, 1, qk)})`);
+  op('qPers', seg(t, F + 3.25, F + 3.6));
+
+  // end card
+  const ek = seg(t, S.end, S.end + .6, out);
+  op('end', ek); tf('end', `translateY(${(1 - ek) * 16}px)`);
+
+  // cursor + click ripple
+  const [cx, cy] = cursorAt(t);
+  let press = 0, ripple = -1;
+  for (const c of clicks) { if (t >= c - .08 && t < c + .12) press = 1;
+    if (t >= D.grab - .04 && t < D.rel) press = 1; if (t >= c && t < c + .45) ripple = (t - c) / .45; }
+  op('cursor', cursorShown(t)); tf('cursor', `translate(${cx - 3}px,${cy - 3}px) scale(${press ? .86 : 1})`);
+  op('click', ripple >= 0 ? (1 - ripple) * cursorShown(t) : 0);
+  tf('click', `translate(${cx}px,${cy}px) scale(${.4 + ripple * .9})`);
+};
+Promise.all([...document.images].map(i => i.decode().catch(() => {}))).then(() => { seek(0); window.READY = true; });
+</script></body></html>
