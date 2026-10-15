@@ -36,8 +36,11 @@ fn rule_which_and_exec_route_end_to_end() {
 
     let o = anchor(&home, &home, &["which", work.join("sub").to_str().unwrap()]);
     assert_eq!(out(&o), wdir.to_str().unwrap());
-    let o = anchor(&home, &home, &["which", home.to_str().unwrap()]);
-    assert_eq!(out(&o), home.join(".claude").to_str().unwrap());
+    // Windows takes the home folder from the known-folder API, not USERPROFILE, so primary isn't the temp home there.
+    if cfg!(unix) {
+        let o = anchor(&home, &home, &["which", home.to_str().unwrap()]);
+        assert_eq!(out(&o), home.join(".claude").to_str().unwrap());
+    }
 
     let o = if cfg!(windows) {
         anchor(&home, &work, &["exec", "--", "cmd", "/C", "echo %CLAUDE_CONFIG_DIR%"])

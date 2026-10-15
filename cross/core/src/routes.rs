@@ -37,9 +37,15 @@ pub fn write_routes(cfg: &Config, limits: &HashMap<String, Limits>, paths: &Path
 /// Config dir for `dir` from routes text: None = primary ("-"), Some(config dir) otherwise.
 pub fn resolve(routes: &str, dir: &str) -> Option<String> { resolve_in(routes, dir, cfg!(windows)) }
 
+/// Drops Windows' verbatim prefix (`\\?\C:\x` → `C:\x`, `\\?\UNC\srv\share` → `\\srv\share`), as canonicalize returns.
+fn plain(p: &str) -> String {
+    if let Some(r) = p.strip_prefix(r"\\?\UNC\") { format!(r"\\{r}") }
+    else { p.strip_prefix(r"\\?\").unwrap_or(p).to_string() }
+}
+
 /// Comparable form of a folder: on Windows lowercase with `\`; no trailing separator except at a root.
 fn key(p: &str, windows: bool) -> String {
-    let mut s = if windows { p.replace('/', "\\").to_lowercase() } else { p.to_string() };
+    let mut s = if windows { plain(&p.replace('/', "\\")).to_lowercase() } else { p.to_string() };
     let sep = if windows { '\\' } else { '/' };
     while s.len() > 1 && s.ends_with(sep) && !(windows && s.len() == 3 && s.as_bytes()[1] == b':') {
         s.pop();
@@ -99,7 +105,7 @@ pub fn normalize_rule_path(path: &str) -> Result<String, String> { normalize_in(
 
 fn normalize_in(path: &str, windows: bool) -> Result<String, String> {
     if path.contains(['\t', '\n', '\r']) { return Err(TAB_MSG.into()); }
-    let s = if windows { path.replace('/', "\\") } else { path.to_string() };
+    let s = if windows { plain(&path.replace('/', "\\")) } else { path.to_string() };
     let sep = if windows { '\\' } else { '/' };
     // Split off the root: "/", "C:\" or "\\server\share". Anything else is not absolute.
     let (root, rest): (&str, &str) = if !windows {
@@ -179,6 +185,9 @@ mod tests {
         let root = "C:\\\t/x/c\n";
         assert_eq!(resolve_in(root, "c:\\foo", true).as_deref(), Some("/x/c"));
         assert_eq!(resolve_in(root, "D:\\foo", true), None);
+        assert_eq!(resolve_in(r, r"\\?\C:\Work\x", true).as_deref(), Some("/x/work"), "verbatim prefix");
+        assert_eq!(normalize_in(r"\\?\C:\Work\", true).as_deref(), Ok(r"C:\Work"));
+        assert_eq!(normalize_in(r"\\?\UNC\srv\share\d", true).as_deref(), Ok(r"\\srv\share\d"));
         let unc = "\\\\srv\\share\t/x/s\n";
         assert_eq!(resolve_in(unc, "\\\\SRV\\share\\dir", true).as_deref(), Some("/x/s"));
     }
