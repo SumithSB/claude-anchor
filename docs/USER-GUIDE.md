@@ -175,6 +175,16 @@ The continued conversation runs on the target account, so its usage is counted t
 
 ## Troubleshooting
 
+### `brew upgrade` says the cask is not installed
+
+`Error: Cask 'claude-anchor' is not installed` means Homebrew didn't install the app on this Mac (it came from the curl installer, a zip or a source build). Re-run the curl installer to upgrade, or switch to Homebrew:
+
+```sh
+brew install --cask --force sumithsb/tap/claude-anchor
+```
+
+After that, `brew upgrade --cask claude-anchor` works. Your settings and accounts in `~/.claude-anchor` are kept either way.
+
 ### The menu is not updating
 
 - Look at the **Updated** line. If it is amber, the data is old.
