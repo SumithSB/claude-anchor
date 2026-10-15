@@ -212,7 +212,6 @@ private struct NavButton: View {
 @MainActor struct PopoverView: View {
     @State private var path: [Pane]
     let popout: Bool
-    @Environment(\.snapshotMode) private var snapshot
     init(path: [Pane] = [], popout: Bool = false) {
         _path = State(initialValue: path)
         self.popout = popout
@@ -454,7 +453,7 @@ private struct NavButton: View {
             .accessibilityLabel("Total usage")
             .accessibilityValue("\(compact(total)) tokens, about \(String(format: "$%.2f", cost))")
             Seg(label: "Group by",
-                options: GroupBy.allCases.map { ($0.rawValue, $0) },
+                options: GroupBy.allCases.map { (label: $0.rawValue, value: $0) },
                 selection: Binding(get: { model.groupBy }, set: { model.groupBy = $0 }), fill: true)
             if rows.isEmpty {
                 Text("No Claude Code usage yet in this range.").font(.subheadline).foregroundStyle(.secondary)
@@ -532,7 +531,7 @@ private struct Ring: View {
                     Circle().trim(from: 0, to: CGFloat(p / 100))
                         .stroke(Clay.gradient(p), style: StrokeStyle(lineWidth: 9, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.5), value: p)
+                        .animation(reduceMotion ? nil : Animation.easeOut(duration: 0.5), value: p)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("\(Int(p.rounded()))").font(.system(size: 30, weight: .light)).monospacedDigit()

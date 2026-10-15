@@ -155,7 +155,7 @@ enum FlagArt {
     private var used: Set<SignalFlag> { Set(model.accounts.map(\.flag)) }
 
     var body: some View {
-        PaneScaffold(title: "Accounts", height: 480) {
+        PaneScaffold(title: "Accounts", height: 560) {
             Section {
                 ForEach(model.accounts) { row($0) }.onMove { model.moveAccounts(fromOffsets: $0, toOffset: $1) }
             } footer: {
@@ -199,7 +199,10 @@ enum FlagArt {
                 } else if let e = a.email { Text(e).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
             }
             Spacer(minLength: 6)
-            if let p = a.plan, !a.pending { Text(p.capitalized).font(.subheadline).foregroundStyle(.secondary).fixedSize() }
+            if let p = a.plan, !a.pending {
+                Text(p.capitalized).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.secondary).fixedSize()
+                    .padding(.horizontal, 7).padding(.vertical, 2).background(Capsule().fill(Clay.surface2))
+            }
             RowMenu(label: "Options for \(a.name)") {
                 Button("Rename") { draft = a.name; editing = a.id }
                 Button("Change flag") { flagFor = a.id }
