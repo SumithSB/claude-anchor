@@ -18,6 +18,8 @@ fs.mkdirSync(out, { recursive: true });
   page.on('pageerror', e => console.error('PAGEERROR', e.message)); page.on('console', m => { if (m.type()==='error') console.error('CONSOLE', m.text()); });
   await page.goto('file://' + path.resolve(__dirname, 'index.html'));
   await page.waitForFunction('window.READY === true');
+  const cues = await page.evaluate(() => window.CUES ? window.CUES() : null);   // sound cue times for audio.py
+  if (cues) fs.writeFileSync(path.join(out, 'cues.json'), JSON.stringify(cues, null, 1));
   const times = only || Array.from({ length: Math.round(dur * fps) }, (_, i) => i / fps);
   for (let i = 0; i < times.length; i++) {
     const t = times[i];

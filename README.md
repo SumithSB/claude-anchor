@@ -1,10 +1,10 @@
 # Claude Anchor
 
-A macOS menu bar app that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account.
+A macOS app that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account. Use it from the menu bar, a floating button, or a pop-out panel.
 
-![Claude Anchor in 20 seconds](docs/tour.gif)
+![Claude Anchor in 26 seconds](docs/tour.gif)
 
-*[Download the video](docs/tour.mp4). Still frame: [`docs/tour.jpg`](docs/tour.jpg).*
+*[Download the video with sound](docs/tour.mp4). Still frame: [`docs/tour.jpg`](docs/tour.jpg).*
 
 | Menu | Accounts | Folder rules |
 |---|---|---|
