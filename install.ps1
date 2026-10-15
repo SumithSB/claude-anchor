@@ -52,8 +52,12 @@ function Install-ClaudeAnchor {
       Copy-Item $anchor (Join-Path $ahome 'bin\anchor.exe') -Force
       Copy-Item $anchor (Join-Path $ahome 'bin\claude-wrapper.exe') -Force
     } else {
-      & $anchor install
-      if ($LASTEXITCODE -ne 0) { throw 'anchor install failed.' }
+      # Capture both streams so a failure says why (PowerShell 5.1 can hide native stderr under iex).
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      $out = & $anchor install 2>&1 | ForEach-Object { "$_" }
+      $code = $LASTEXITCODE; $ErrorActionPreference = $prev
+      $out | ForEach-Object { Write-Host "  $_" }
+      if ($code -ne 0) { throw "anchor install failed (exit $code): $($out -join ' ')" }
     }
 
     $exe = Join-Path $env:LOCALAPPDATA 'Claude Anchor\claude-anchor.exe'

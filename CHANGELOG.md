@@ -2,6 +2,13 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-10-15
+
+### Fixed
+
+- Windows install no longer fails when VS Code or Cursor settings have comments after a value, `/* */` comments, or a byte order mark. Editor integration that can't be set up is now skipped with a message instead of stopping the install.
+- `install.ps1` shows what `anchor install` printed, so a failure says why.
+
 ## [0.4.0] - 2026-10-15
 
 ### Added

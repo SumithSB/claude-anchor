@@ -94,11 +94,29 @@ pub fn apply(on: bool, paths: &Paths) -> Result<bool, String> {
     Ok(true)
 }
 
-/// settings.json allows comments and trailing commas: drop comment lines and commas before a closer.
+/// settings.json is JSONC: a BOM, `//` and `/* */` comments anywhere outside strings, and trailing commas.
 fn parses(t: &str) -> bool {
-    let t = Regex::new(r"(?m)^\s*//.*$").expect("constant pattern").replace_all(t, "");
+    let t = strip_comments(t.trim_start_matches('\u{feff}'));
     let t = Regex::new(r",(\s*[}\]])").expect("constant pattern").replace_all(&t, "$1");
     serde_json::from_str::<serde_json::Value>(&t).is_ok()
+}
+
+/// Drops `//` and `/* */` comments that aren't inside a string.
+fn strip_comments(t: &str) -> String {
+    let (mut out, mut cs, mut in_str) = (String::with_capacity(t.len()), t.chars().peekable(), false);
+    while let Some(c) = cs.next() {
+        if in_str {
+            out.push(c);
+            if c == '\\' { if let Some(n) = cs.next() { out.push(n) } } else if c == '"' { in_str = false }
+        } else if c == '"' { in_str = true; out.push(c) }
+        else if c == '/' && cs.peek() == Some(&'/') { while cs.peek().is_some_and(|&n| n != '\n') { cs.next(); } }
+        else if c == '/' && cs.peek() == Some(&'*') {
+            cs.next();
+            let mut prev = ' ';
+            for n in cs.by_ref() { if prev == '*' && n == '/' { break } prev = n; }
+        } else { out.push(c) }
+    }
+    out
 }
 
 /// Reads a JSON string body (without its quotes) back to the raw value.
@@ -115,6 +133,15 @@ mod tests {
     use super::*;
 
     const OURS: &str = "/h/.claude-anchor/bin/claude-wrapper";
+
+    #[test]
+    fn parses_jsonc_like_vscode() {
+        let t = "\u{feff}{\n  \"a\": 1, // trailing note\n  /* block\n  comment */ \"b\": \"http://x/*y*/\",\n  \"c\": [1,],\n}\n";
+        assert!(parses(t));
+        assert!(!parses("{ \"a\": }"));
+        let out = set_wrapper(t, Some(OURS)).unwrap();
+        assert!(parses(&out) && out.contains(OURS) && out.contains("http://x/*y*/"));
+    }
 
     #[test]
     fn inserts_into_empty_and_nonempty_objects() {
