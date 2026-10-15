@@ -2,6 +2,25 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-10-15
+
+### Added
+
+- Windows 10/11 and Linux (x86_64) support. A tray app with the same harbor switcher, limit rings, usage, last-conversation card, Accounts, Rules and Settings panes, and floating button as the macOS app. Install with `install.ps1` on Windows or `install.sh` on Linux.
+- `anchor` command line for Windows and Linux: `which`, `status`, `limits`, `usage`, `account`, `default`, `rule`, `editor`, `continue`, `install` and `uninstall`.
+- `claude` is routed in bash, zsh and PowerShell through `anchor exec`, and in VS Code and Cursor through the `claude-wrapper` process wrapper.
+- Release builds for Windows (setup.exe, MSI) and Linux (AppImage, deb), each with a `.sha256` checksum.
+
+### Changed
+
+- The macOS installer only picks the `ClaudeAnchor-*.zip` asset, so the Windows command-line zip on the same release is never used on a Mac.
+
+### Notes
+
+- Windows and Linux builds are unsigned. Windows SmartScreen asks once: More info, then Run anyway.
+- On Wayland the floating button and the Ctrl+Alt+A shortcut aren't available. GNOME needs the AppIndicator extension to show the tray icon.
+- cmd.exe and fish aren't routed yet. Use `anchor exec -- claude` there.
+
 ## [0.3.2] - 2026-10-15
 
 ### Added

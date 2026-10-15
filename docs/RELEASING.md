@@ -14,7 +14,7 @@ Replace `X.Y.Z` with the new version (for example `0.3.1`) everywhere below.
 Edit `Resources/Info.plist` on a branch:
 
 - `CFBundleShortVersionString`: the version, `X.Y.Z`.
-- `CFBundleVersion`: the build number. Increase it by one on every release. 0.3.2 is build `6`.
+- `CFBundleVersion`: the build number. Increase it by one on every release. 0.4.0 is build `7`.
 
 ```sh
 /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString X.Y.Z' Resources/Info.plist
