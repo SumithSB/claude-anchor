@@ -1,0 +1,26 @@
+[package]
+name = "anchor-tray"
+version = "0.4.0"
+edition = "2021"
+description = "Claude Anchor tray app for Windows and Linux"
+license = "MIT"
+
+[[bin]]
+name = "claude-anchor"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anchor-core = { path = "../core" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-opener = "2"
+notify = "6"
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
