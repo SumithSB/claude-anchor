@@ -63,7 +63,7 @@ fn push(app: &AppHandle, g: &Inner) -> Value {
         "isRefreshing": g.is_refreshing, "lastRefreshed": g.last_refreshed,
         "loginItem": app.autolaunch().is_enabled().unwrap_or(false),
         "wayland": shell::wayland(), "platform": std::env::consts::OS.replace("darwin", "macos"),
-        "home": g.store.paths.home, "version": env!("CARGO_PKG_VERSION"),
+        "home": g.store.paths.home, "version": env!("CARGO_PKG_VERSION"), "pinned": g.pinned,
     });
     let _ = app.emit("state", &s);
     shell::update_tray(app, g, s["loginItem"].as_bool().unwrap_or(false));
