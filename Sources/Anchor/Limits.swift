@@ -79,14 +79,109 @@ extension AppModel {
 
     func refreshLimits() async {
         let list = accounts.filter { !$0.pending }.map { ($0, limits[$0.id]) }
+        let before = limits
         let results = await withTaskGroup(of: (String, Limits).self) { g -> [String: Limits] in
             for (a, prev) in list { g.addTask { (a.id, await Self.fetchLimits(a, previous: prev)) } }
             var r: [String: Limits] = [:]
             for await (id, l) in g { r[id] = l }
             return r
         }
+        AnchorRuntime.limitsAttempted = true
         for (id, l) in results { limits[id] = l }
+        if results.values.contains(where: { $0.error == nil }) { lastRefreshed = Date() }
+        evaluateFresh(before: before)
         evaluateOverflow()
+    }
+
+    /// Manual refresh: limits and usage rows. Fire-and-forget; ignored while one is running.
+    func refreshNow() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        rescan()
+        Task {
+            await refreshLimits()
+            isRefreshing = false
+        }
+    }
+
+    /// Called when the popover opens.
+    func refreshIfStale() {
+        guard !isRefreshing else { return }
+        if let t = lastRefreshed, Date().timeIntervalSince(t) <= 30 { return }
+        refreshNow()
+    }
+
+    var lastRefreshedText: String {
+        if isRefreshing { return "Updating…" }
+        guard let t = lastRefreshed else { return "Not updated yet" }
+        let s = max(0, Int(Date().timeIntervalSince(t)))
+        if s < 60 { return "Updated just now" }
+        if s < 3600 { return "Updated \(s / 60) min ago" }
+        return "Updated \(s / 3600) h ago"
+    }
+
+    /// True when the numbers on screen are old enough to distrust.
+    var isOutdated: Bool {
+        guard let t = lastRefreshed else { return AnchorRuntime.limitsAttempted }
+        return Date().timeIntervalSince(t) > Double(max(600, 3 * config.refreshSeconds))
+    }
+
+    // MARK: fresh (full 5h window available)
+
+    func isFresh(_ id: String) -> Bool { limits[id]?.isFresh == true }
+
+    /// Signed-in accounts other than the default whose 5h window is unused, in config order.
+    var freshAccounts: [Account] {
+        accounts.filter { !$0.pending && $0.id != config.defaultID && limits[$0.id]?.isFresh == true }
+    }
+
+    /// Short time until the 5h window resets ("22m", "1h 39m"), only once it is at least 75% used.
+    func resetCountdown(_ id: String) -> String? {
+        guard let w = limits[id]?.fiveHour, w.percent >= 75, let at = w.resetsAt else { return nil }
+        let secs = at.timeIntervalSinceNow
+        guard secs > 0 else { return nil }
+        let mins = (Int(secs) + 59) / 60
+        let h = mins / 60, m = mins % 60
+        if h == 0 { return "\(m)m" }
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+    }
+
+    /// Notifies once when an account goes from used to fresh between refreshes.
+    func evaluateFresh(before: [String: Limits]) {
+        for a in accounts where !a.pending {
+            guard let l = limits[a.id] else { continue }
+            if l.isFresh {
+                let wasFresh = before[a.id]?.isFresh == true || freshNotified.contains(a.id)
+                let seenBefore = before[a.id] != nil
+                freshNotified.insert(a.id)
+                guard !wasFresh, seenBefore, a.id != config.defaultID, config.notifyFresh,
+                      Bundle.main.bundleIdentifier != nil else { continue }
+                let c = UNMutableNotificationContent()
+                c.title = "Claude Anchor"
+                c.body = "\(a.name)'s 5-hour window reset. Full window available."
+                UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+            } else if l.error == nil, !l.stale {
+                freshNotified.remove(a.id)   // a failed fetch must not re-arm the notice
+            }
+        }
+        freshNotified = freshNotified.filter { id in accounts.contains { $0.id == id } }
+    }
+
+    nonisolated static func peakUsage(_ l: Limits?) -> Double {
+        max(l?.fiveHour?.percent ?? 0, l?.weekly?.percent ?? 0)
+    }
+
+    /// Accounts the last conversation could move to: fresh first, then least used, errors last.
+    var continueTargets: [Account] {
+        let from = lastSession?.accountID ?? config.defaultID
+        return accounts.filter { !$0.pending && $0.id != from }.sorted { a, b in
+            let la = limits[a.id], lb = limits[b.id]
+            let ea = la?.error != nil, eb = lb?.error != nil
+            if ea != eb { return !ea }
+            let fa = la?.isFresh == true, fb = lb?.isFresh == true
+            if fa != fb { return fa }
+            return Self.peakUsage(la) < Self.peakUsage(lb)
+        }
     }
 
     func evaluateOverflow() {
@@ -97,11 +192,11 @@ extension AppModel {
         if let t = AnchorRuntime.lastMove, Date().timeIntervalSince(t) < 600 { return }
         let best = accounts
             .filter { !$0.pending && $0.id != cur.id }
-            .compactMap { a -> (Account, Double)? in
+            .compactMap { a -> (Account, Double, Bool)? in
                 guard let l = limits[a.id], l.error == nil, peak(l) < thr else { return nil }
-                return (a, peak(l))
+                return (a, peak(l), l.isFresh)
             }
-            .min { $0.1 < $1.1 }
+            .min { x, y in x.2 != y.2 ? x.2 : x.1 < y.1 }   // fresh first, then lowest peak
         guard let new = best?.0 else { return }
         let five = (cl.fiveHour?.percent ?? 0) >= (cl.weekly?.percent ?? 0)
         let text = "Switched to \(new.name). \(cur.name) hit \(Int(peak(cl)))% of its \(five ? "5h" : "weekly") limit."

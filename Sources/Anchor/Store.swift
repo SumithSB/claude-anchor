@@ -8,6 +8,7 @@ import UserNotifications
     static var logins: [String: Process] = [:]   // running `claude auth login` per account
     static var limitsTimer: Timer?
     static var lastMove: Date?
+    static var limitsAttempted = false   // a limits refresh has run at least once
     static let queue = DispatchQueue(label: "anchor.scan", qos: .utility)
 }
 
@@ -119,6 +120,8 @@ extension AppModel {
 
     func start() {
         load()
+        let clamped = Self.clampRefresh(config.refreshSeconds)
+        if clamped != config.refreshSeconds { config.refreshSeconds = clamped; save() }
         installShellFiles()
         refreshEnvironment()
         // Editors are on by default: the first launch that finds VS Code or Cursor routes them too.
@@ -134,13 +137,36 @@ extension AppModel {
         rescan()
         restartWatch()
         Task { await refreshLimits() }
+        applyRefreshInterval()
+    }
+
+    nonisolated static let refreshChoices = [30, 60, 300, 900]
+
+    /// Maps any stored value to an allowed one: 0 stays manual, others snap to the nearest choice.
+    nonisolated static func clampRefresh(_ s: Int) -> Int {
+        if s == 0 { return 0 }
+        if s < 0 { return 300 }
+        return refreshChoices.min { abs($0 - s) < abs($1 - s) } ?? 300
+    }
+
+    /// (Re)arms the limits timer from config.refreshSeconds; 0 leaves it off.
+    func applyRefreshInterval() {
         AnchorRuntime.limitsTimer?.invalidate()
-        AnchorRuntime.limitsTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        AnchorRuntime.limitsTimer = nil
+        let s = config.refreshSeconds
+        guard s > 0 else { return }
+        AnchorRuntime.limitsTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(s), repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.restartWatch()
                 Task { await self?.refreshLimits() }
             }
         }
+    }
+
+    func setRefreshSeconds(_ s: Int) {
+        config.refreshSeconds = Self.clampRefresh(s)
+        save()
+        applyRefreshInterval()
     }
 
     /// Scan logs off the main thread, then update rows.

@@ -50,6 +50,14 @@ struct Config: Codable {
     var bell: Bool = false
     var editorIntegration: Bool?              // optional so older config.json still decodes
     var removedNames: [String: String] = [:]  // accountID -> name, for usage history of removed accounts
+    var refreshSeconds: Int = 300             // limits refresh interval; 0 = manual only
+    var notifyFresh: Bool = true              // notify when another account's 5h window resets and is unused
+    var floatingButton: Bool = false          // draggable always-on-top button
+    var floatingSnap: Bool = true             // settle against the nearest screen edge after a drag
+    var floatingFade: Bool = true             // dim after a few idle seconds
+    var floatingAllSpaces: Bool = true        // show on every Space and over full-screen apps
+    var floatingX: Double?                    // last position, screen points (bottom-left origin)
+    var floatingY: Double?
 }
 
 extension Config {
@@ -64,6 +72,14 @@ extension Config {
         bell = try c.decodeIfPresent(Bool.self, forKey: .bell) ?? false
         editorIntegration = try c.decodeIfPresent(Bool.self, forKey: .editorIntegration)
         removedNames = try c.decodeIfPresent([String: String].self, forKey: .removedNames) ?? [:]
+        refreshSeconds = try c.decodeIfPresent(Int.self, forKey: .refreshSeconds) ?? 300
+        notifyFresh = try c.decodeIfPresent(Bool.self, forKey: .notifyFresh) ?? true
+        floatingButton = try c.decodeIfPresent(Bool.self, forKey: .floatingButton) ?? false
+        floatingSnap = try c.decodeIfPresent(Bool.self, forKey: .floatingSnap) ?? true
+        floatingFade = try c.decodeIfPresent(Bool.self, forKey: .floatingFade) ?? true
+        floatingAllSpaces = try c.decodeIfPresent(Bool.self, forKey: .floatingAllSpaces) ?? true
+        floatingX = try c.decodeIfPresent(Double.self, forKey: .floatingX)
+        floatingY = try c.decodeIfPresent(Double.self, forKey: .floatingY)
     }
 }
 
@@ -80,6 +96,14 @@ struct Limits: Codable, Hashable {
     var error: String?        // user-facing, e.g. "Work's sign-in expired. Sign in again."
     var needsSignIn = false   // error is an expired sign-in, so offer "Sign in again"
     var note: String?         // soft warning shown under the bars, e.g. offline
+
+    /// A full, unused 5h window is available: fetched live and OK, and nothing has been counted in it
+    /// (utilization under 1%, or no active 5h window reported while the weekly figure is present).
+    var isFresh: Bool {
+        guard error == nil, !stale else { return false }
+        if let f = fiveHour { return f.percent < 1 }
+        return weekly != nil
+    }
 }
 
 enum GroupBy: String, CaseIterable, Identifiable {
@@ -110,6 +134,9 @@ final class AppModel {
     var cliInstalled = true                  // Claude Code CLI found; rechecked each time the popover opens
     var live = true                          // false for snapshot models: never touch real files
     var saveBlocked = false                  // config.json exists but couldn't be backed up; don't overwrite it
+    var isRefreshing = false                 // a limits refresh is in flight (drives the refresh button spinner)
+    var lastRefreshed: Date?                 // when limits were last fetched successfully
+    var freshNotified: Set<String> = []      // accounts already announced as fresh (so we notify once per reset)
 
     let usage = UsageIndex()
 
