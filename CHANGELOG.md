@@ -2,6 +2,13 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-10-15
+
+### Fixed
+
+- Windows: `anchor.exe` and the tray app no longer need the Visual C++ Redistributable. Without it they couldn't start, and `install.ps1` stopped with "anchor install failed." The C runtime is now linked into the executables.
+- `install.ps1` explains a missing system DLL instead of a bare failure.
+
 ## [0.4.1] - 2026-10-15
 
 ### Fixed
