@@ -93,6 +93,51 @@ On Linux and Windows, `anchor install` + `anchor rule add` routes `claude` in ba
 - File watching with `notify` on each account's `projects/`, limits timer from `refreshSeconds`.
 - Commands are thin wrappers over `accounts::Store`; the frontend gets a single `state` object and an event when it changes.
 
+### Tray contract (backend `cross/tray/src`, frontend `cross/tray/ui`)
+
+The tray ships the `anchor` CLI as a Tauri sidecar (`externalBin`). On start it calls
+`hook::install_binaries(paths, <sidecar path>)` and `hook::install_hook`, and turns editor integration on the
+first time editors are found (like the Swift `start()`).
+
+Frontend: plain `index.html` + `app.css` + `app.js` (+ `flags.js`), `withGlobalTauri: true`, calls
+`window.__TAURI__.core.invoke(name, args)` and listens to the `state` event. Every command returns the new `State`
+or rejects with a user-facing string.
+
+```ts
+type State = {
+  config: Config;                       // model.rs Config as JSON (camelCase keys as in config.json)
+  limits: Record<string, Limits>;       // model.rs Limits JSON
+  usageRows: UsageRow[];                // for groupBy/rangeDays below
+  groupBy: "account" | "project" | "model";
+  rangeDays: 1 | 7 | 30;
+  lastSession: { cwd: string; accountID: string; file?: string } | null;
+  overflowSuggestion: string | null;    // account id
+  banner: string | null;
+  signingIn: string[];                  // account ids
+  cliInstalled: boolean;
+  isRefreshing: boolean;
+  lastRefreshed: number | null;         // unix seconds
+  loginItem: boolean;
+  wayland: boolean;                     // floating button and hotkey unavailable
+  platform: "windows" | "linux" | "macos";
+  home: string;                         // for abbreviating paths
+  version: string;
+};
+```
+
+Commands (snake_case names, camelCase args):
+`get_state`, `refresh`, `set_default {id}`, `add_account {name, flag}` (also starts sign-in), `sign_in {id}`,
+`cancel_sign_in {id}`, `sign_out_primary`, `remove_account {id, to}`, `rename_account {id, name}`, `set_flag {id, flag}`,
+`move_account {from, to}`, `add_rule {path, accountId}`, `remove_rule {path}`, `set_rule_overflow {path, on}`,
+`pick_folder` → `string | null`, `set_setting {key, value}` (key ∈ refreshSeconds, notifyFresh, autoOverflow,
+overflowThreshold, bell, floatingButton, floatingSnap, floatingFade), `set_editor_integration {on}`, `set_login_item {on}`,
+`set_usage_view {groupBy, rangeDays}`, `continue_session {target}`, `dismiss_banner`, `open_url {url}`,
+`toggle_pin` (keeps the main window open instead of hiding on blur), `quit`.
+
+Windows: `main` (index.html, 340×640, no decorations, hidden at start, skip taskbar, shown near the tray and hidden on
+blur unless pinned) and `button` (button.html, 56×56 transparent, always on top, skip taskbar, draggable;
+click opens `main` beside it; position saved to floatingX/Y; not created on Wayland or when floatingButton is off).
+
 ## Phase 3: packaging
 
 - CI matrix builds `.msi`/NSIS and `.AppImage`/`.deb` with `tauri-action`, plus `anchor` CLI archives and `.sha256` files.
