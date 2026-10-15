@@ -29,6 +29,7 @@ enum FloatingFormat {
             parts.append("5h \(Int(w.percent.rounded()))%")
             if let d = w.resetsAt, d > Date() { parts.append("resets in " + countdown(d)) }
         }
+        if model.activeIsFresh { parts.append("full 5h window") }
         var s = parts.joined(separator: " · ")
         let fresh = model.freshAccounts.filter { $0.id != a.id }
         if fresh.count == 1 { s += " · \(fresh[0].name) is fresh" } else if fresh.count > 1 { s += " · \(fresh.count) fresh" }
@@ -40,29 +41,44 @@ enum FloatingFormat {
 
 @MainActor struct FloatingButtonView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
 
     var body: some View {
         let acct = model.active
         let pct = acct.flatMap { model.limits[$0.id]?.fiveHour?.percent }
+        // A full 5-hour window is available: on this account, or on another one to switch to.
+        let fresh = model.activeIsFresh || !model.freshAccounts.isEmpty
         ZStack {
             Circle().fill(Clay.surface)
-            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 4).padding(5)
+            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 3).padding(4)
             if let p = pct {
                 Circle().trim(from: 0, to: max(0.02, min(1, p / 100)))
-                    .stroke(Clay.gradient(p), style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(Clay.gradient(p), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .padding(5)
+                    .padding(4)
             }
-            Circle().fill(Clay.accent).frame(width: 36, height: 36)
+            Circle().fill(Clay.accent).frame(width: 26, height: 26)
             AnchorGlyph()
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
-                .frame(width: 14, height: 16)
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+                .frame(width: 10, height: 12)
         }
-        .frame(width: 60, height: 60)
+        .frame(width: 44, height: 44)
         .overlay(Circle().stroke(Clay.hairline, lineWidth: 1))
+        .background {
+            if fresh {
+                Circle().fill(Clay.fresh).padding(-4).blur(radius: 4)
+                    .opacity(reduceMotion ? 0.85 : (pulse ? 1 : 0.55))
+                    .onAppear {
+                        guard !reduceMotion else { return }
+                        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { pulse = true }
+                    }
+                    .onDisappear { pulse = false }
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if let a = acct {
-                FlagView(flag: a.flag, size: 10)
+                FlagView(flag: a.flag, size: 8)
                     .padding(2)
                     .background(RoundedRectangle(cornerRadius: 4).fill(Clay.surface))
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Clay.hairline, lineWidth: 1))
@@ -70,10 +86,12 @@ enum FloatingFormat {
             }
         }
         .overlay(alignment: .topLeading) {
-            if !model.freshAccounts.isEmpty {
-                Circle().fill(Clay.fresh).frame(width: 13, height: 13)
+            if fresh {
+                Image(systemName: "arrow.clockwise").font(.system(size: 8.5, weight: .heavy)).foregroundStyle(.white)
+                    .frame(width: 17, height: 17)
+                    .background(Circle().fill(Clay.fresh))
                     .overlay(Circle().stroke(Clay.surface, lineWidth: 2))
-                    .offset(x: 1, y: 1)
+                    .offset(x: -3, y: -3)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -86,7 +104,7 @@ enum FloatingFormat {
             }
         }
         .shadow(color: .black.opacity(0.28), radius: 7, x: 0, y: 4)
-        .frame(width: 72, height: 72)
+        .frame(width: 56, height: 56)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Claude Anchor")
         .accessibilityValue(FloatingFormat.tip(model))
@@ -115,8 +133,6 @@ enum FloatingFormat {
     @Environment(AppModel.self) private var model
     var maxHeight: CGFloat?
     var onOpenFull: () -> Void = {}
-    var onHide: () -> Void = {}
-    var onClose: () -> Void = {}
 
     var body: some View {
         if let maxHeight {
@@ -124,65 +140,44 @@ enum FloatingFormat {
                 content
                 ScrollView(.vertical, showsIndicators: false) { content }
             }
-            .frame(width: 300, height: maxHeight)
+            .frame(width: 280, height: maxHeight)
         } else {
             content
         }
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
+        VStack(alignment: .leading, spacing: 12) {
+            HarborView(width: 252)
+            if model.activeIsFresh, let a = model.active {
+                Label("\(a.name) has a full 5-hour window", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Clay.fresh)
+            }
             VStack(spacing: 10) {
                 bar("5-hour", model.active.flatMap { model.limits[$0.id]?.fiveHour }, weekly: false)
                 bar("Weekly", model.active.flatMap { model.limits[$0.id]?.weekly }, weekly: true)
             }
-            FreshCard(compact: true)
-            HarborView(width: 268)
-            ContinueCard(compact: true)
-            Divider()
+            if let f = model.freshAccounts.first(where: { $0.id != model.active?.id }) {
+                Button { model.setDefault(f.id) } label: {
+                    HStack(spacing: 6) {
+                        FlagView(flag: f.flag, size: 10)
+                        Text("Anchor at \(f.name) · full 5h").lineLimit(1).truncationMode(.tail)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ClayButtonStyle(fill: Clay.fresh, ink: Clay.freshInk))
+                .accessibilityLabel("Anchor at \(f.name), full 5-hour window")
+            }
             HStack {
                 Button(action: onOpenFull) {
                     Text("Open full menu →").font(.system(size: 12, weight: .semibold)).foregroundStyle(Clay.accentText)
                 }.buttonStyle(.plain)
                 Spacer()
-                Button(action: onHide) {
-                    Text("Hide button").font(.system(size: 12)).foregroundStyle(.secondary)
-                }.buttonStyle(.plain)
+                RefreshButton(busy: model.isRefreshing) { model.refreshNow() }
             }
         }
-        .padding(16)
-        .frame(width: 300)
-    }
-
-    private var header: some View {
-        HStack(spacing: 9) {
-            if let a = model.active {
-                FlagView(flag: a.flag, size: 16)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(a.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                    Text("Default account").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                if let plan = a.plan {
-                    Text(plan.uppercased())
-                        .font(.system(size: 10, weight: .bold)).tracking(0.8)
-                        .foregroundStyle(Clay.accentText)
-                        .padding(.horizontal, 9).padding(.vertical, 3)
-                        .background(Capsule().fill(Clay.accent.opacity(0.14)))
-                }
-            } else {
-                Text("Claude Anchor").font(.system(size: 14, weight: .semibold))
-            }
-            Spacer(minLength: 4)
-            Button(action: onClose) {
-                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Clay.surface2))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Clay.hairline, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
-        }
+        .padding(14)
+        .frame(width: 280)
     }
 
     private func bar(_ label: String, _ w: LimitWindow?, weekly: Bool) -> some View {
@@ -275,6 +270,17 @@ private final class ButtonContainer: NSView {
     }
 }
 
+/// Clicks the menu bar icon to open the MenuBarExtra window; falls back to the pop-out panel.
+@MainActor private func openMenuBarWindow(_ model: AppModel) {
+    func find(_ v: NSView?) -> NSStatusBarButton? {
+        guard let v else { return nil }
+        if let b = v as? NSStatusBarButton { return b }
+        return v.subviews.lazy.compactMap { find($0) }.first
+    }
+    if let b = NSApp.windows.lazy.compactMap({ find($0.contentView) }).first { b.performClick(nil) }
+    else { PopoutController.shared.show(model) }
+}
+
 private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef?, _ ctx: UnsafeMutableRawPointer?) -> OSStatus {
     Task { @MainActor in FloatingController.shared.hotKeyFired() }
     return noErr
@@ -285,7 +291,7 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
 @MainActor final class FloatingController {
     static let shared = FloatingController()
 
-    private static let side: CGFloat = 72      // panel size; the button is 60pt, centred
+    private static let side: CGFloat = 56      // panel size; the button is 44pt, centred
     private static let edgeMargin: CGFloat = 4  // plus 6pt of transparent padding
 
     private weak var model: AppModel?
@@ -387,7 +393,7 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
             }
         }
         let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        return NSPoint(x: vf.maxX - s - Self.edgeMargin, y: vf.midY - s / 2)
+        return NSPoint(x: vf.maxX - s - Self.edgeMargin, y: vf.minY + 80)
     }
 
     private func dragBegan() {
@@ -504,7 +510,7 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
         hideTip()
         fadeTimer?.invalidate(); fadeTimer = nil
         setAlpha(1)
-        let w: CGFloat = 300
+        let w: CGFloat = 280
         let bf = bp.frame
         let vf = screen(containing: bf)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         let measure = NSHostingView(rootView: QuickPanelView().environment(model))
@@ -522,29 +528,18 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
         q.collectionBehavior = bp.collectionBehavior
         q.onEscape = { [weak self] in self?.closeQuick() }
 
-        let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        fx.material = .popover
-        fx.blendingMode = .behindWindow
-        fx.state = .active
-        fx.wantsLayer = true
-        fx.layer?.cornerRadius = 20
-        fx.layer?.masksToBounds = true
-        fx.layer?.borderWidth = 0.5
-        fx.layer?.borderColor = NSColor.separatorColor.cgColor
+        // Solid paper, like the menu: the system popover material looks washed out over light wallpapers.
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         let host = NSHostingView(rootView: QuickPanelView(
             maxHeight: h,
-            onOpenFull: { [weak self] in self?.closeQuick(); PopoutController.shared.show(model) },
-            onHide: { [weak self] in
-                model.config.floatingButton = false
-                model.save()
-                self?.sync(model)
-            },
-            onClose: { [weak self] in self?.closeQuick() }
-        ).environment(model))
-        host.frame = fx.bounds
-        host.autoresizingMask = [.width, .height]
-        fx.addSubview(host)
-        q.contentView = fx
+            onOpenFull: { [weak self] in self?.closeQuick(); openMenuBarWindow(model) }
+        )
+        .background(Clay.paper)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Clay.hairline, lineWidth: 1))
+        .environment(model))
+        host.frame = NSRect(x: 0, y: 0, width: w, height: h)
+        q.contentView = host
 
         // Beside the button; flips to the other side near a screen edge.
         let onLeft = bf.midX < vf.midX

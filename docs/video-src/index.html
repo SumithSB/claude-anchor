@@ -1,549 +1,233 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Claude Anchor v0.3 tour (design mock)</title>
+<html><head><meta charset="utf-8"><title>Claude Anchor tour</title>
+<!-- Tour composition. Every UI pixel is a real SwiftUI render from assets/ (see README.md).
+     Driven by window.seek(t) so render.js can capture it frame by frame. -->
 <style>
-:root{
-  --bg:#F5F3EE;--card:#FFFFFF;--card2:#F0EDE6;--ink:#1F1E1B;--sub:#6B6760;--line:rgba(31,30,27,0.10);--line2:rgba(31,30,27,0.24);--track:rgba(31,30,27,0.08);
-  --accent:#D97757;--accentText:#B5532F;--accentFill:#B9583A;--accentInk:#FFFFFF;--accentSoft:rgba(217,119,87,0.12);--accentGlow:rgba(217,119,87,0.28);
-  --ok:#2F7F6F;--okSoft:rgba(47,127,111,0.10);--okLine:rgba(47,127,111,0.28);--okInk:#FFFFFF;--okFill:#2F7F6F;--warn:#9A6A0E;--crit:#B5352E;
-  --hi:inset 0 1px 0 rgba(255,255,255,0.7);--lift:0 10px 28px rgba(60,40,20,0.08);
-  --sky:#FBF9F5;--water:#DDEAE8;--foam:rgba(255,255,255,0.9);--sand:rgba(217,119,87,0.10);--chain:#8A7F72;
-  --menubar:rgba(250,248,244,0.78);--glass:rgba(255,255,255,0.86);
-  --wall:radial-gradient(900px 600px at 18% 20%,#EBE4D8 0%,rgba(235,228,216,0) 70%),radial-gradient(800px 600px at 85% 90%,#DDD2C1 0%,rgba(221,210,193,0) 70%),linear-gradient(160deg,#E3DBCD,#CFC6B8);
-}
-#stage.dark{
-  --bg:#1D1C1A;--card:#272624;--card2:#302E2B;--ink:#F3F0EA;--sub:#A9A49B;--line:rgba(255,255,255,0.08);--line2:rgba(255,255,255,0.22);--track:rgba(255,255,255,0.09);
-  --accentText:#EB9475;--accentFill:#D97757;--accentInk:#1D1C1A;--accentSoft:rgba(217,119,87,0.16);--accentGlow:rgba(217,119,87,0.30);
-  --ok:#72C2AF;--okSoft:rgba(114,194,175,0.10);--okLine:rgba(114,194,175,0.30);--okInk:#1D1C1A;--okFill:#72C2AF;--warn:#E8BA5A;--crit:#F27D72;
-  --hi:inset 0 1px 0 rgba(255,255,255,0.04);--lift:0 12px 32px rgba(0,0,0,0.35);
-  --sky:#24231F;--water:#1F2E2D;--foam:rgba(170,215,205,0.16);--sand:rgba(217,119,87,0.12);--chain:#8F877C;
-  --menubar:rgba(36,35,32,0.78);--glass:rgba(39,38,36,0.88);
-  --wall:radial-gradient(900px 600px at 18% 20%,#3A362F 0%,rgba(58,54,47,0) 70%),linear-gradient(160deg,#2F2C27,#201F1C);
-}
-*{box-sizing:border-box}
-html,body{margin:0;background:#000}
-body{width:1280px;height:720px;overflow:hidden}
-#stage{position:relative;width:1280px;height:720px;overflow:hidden;background:var(--wall);color:var(--ink);
-  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter',system-ui,sans-serif;font-size:13px;letter-spacing:-0.003em;user-select:none}
-button{font:inherit;color:inherit}
-.abs{position:absolute}
-.lbl{font-size:10.5px;font-weight:650;letter-spacing:.09em;text-transform:uppercase}
-
-/* menu bar */
-#menubar{position:absolute;left:0;top:0;right:0;height:28px;background:var(--menubar);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;padding:0 16px;font-size:13px}
-#menubar .r{margin-left:auto;display:flex;align-items:center;gap:14px}
-#mbicon{width:26px;height:20px;border-radius:6px;display:grid;place-items:center}
-
-/* terminal decor */
-#term{position:absolute;left:56px;top:84px;width:700px;height:400px;border-radius:12px;background:#1A1917;border:1px solid rgba(255,255,255,0.08);box-shadow:0 30px 80px rgba(0,0,0,0.30);overflow:hidden}
-#term .tb{height:30px;background:#262421;display:flex;align-items:center;gap:8px;padding:0 12px}
-#term .tb i{width:12px;height:12px;border-radius:50%;display:block}
-#term .bd{padding:16px 18px;font-family:ui-monospace,'SF Mono',Menlo,'DejaVu Sans Mono',monospace;font-size:13px;line-height:1.7;color:#E8E4DC}
-
-/* popover / window */
-#pop{position:absolute;left:0;top:0;width:380px;transform-origin:0 0;border-radius:14px;background:var(--bg);box-shadow:0 0 0 1px var(--line),0 24px 60px rgba(40,25,10,0.30);overflow:hidden}
-#titlebar{height:0;overflow:hidden;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--card2);border-bottom:1px solid var(--line);font-size:12px;color:var(--sub)}
-#titlebar i{width:12px;height:12px;border-radius:50%;display:block;flex:none}
-#popbody{position:relative;height:650px;overflow:hidden}
-#main{position:absolute;inset:0;padding:16px 16px 12px;display:flex;flex-direction:column;gap:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px}
-.ibtn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;color:var(--sub)}
-
-#harborwrap{display:flex;flex-direction:column;gap:9px;width:348px;flex:none}
-#harbor{position:relative;width:348px;height:240px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:var(--sky);box-shadow:var(--hi)}
-.berth{position:absolute;top:164px;width:104px;height:64px;padding:0 4px;border-radius:13px;border:1px solid var(--line);background:var(--card);box-shadow:var(--hi);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
-.berth .n{font-weight:650;font-size:12.5px;white-space:nowrap}
-.berth .s{font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-.badge{position:absolute;top:-7px;right:-5px;height:15px;padding:0 6px;border-radius:999px;background:var(--ok);color:var(--okInk);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;display:grid;place-items:center;box-shadow:0 0 0 2px var(--water);transform-origin:80% 20%}
-#anchor{position:absolute;width:40px;height:40px;display:grid;place-items:center;transform-origin:50% 20%}
-
-#freshwrap{overflow:hidden;flex:none}
-#fresh{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:14px;background:var(--okSoft);border:1px solid var(--okLine)}
-#freshbtn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:9px;border:none;background:var(--okFill);color:var(--okInk);font-size:12px;font-weight:650;align-self:flex-start}
-
-.ringcol{display:flex;flex-direction:column;align-items:center;gap:10px}
-.ringcol .rt{font-size:32px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-0.04em;line-height:1}
-.ringcol .rt span{font-size:14px;font-weight:500;letter-spacing:0;margin-left:1px;color:var(--sub)}
-.reset{font-size:12px;color:var(--sub);text-align:center;min-height:30px;line-height:15px}
-
-/* settings overlay */
-#settings{position:absolute;inset:0;background:var(--bg);padding:16px;display:flex;flex-direction:column;gap:16px;opacity:0}
-.seg{display:flex;padding:3px;border-radius:11px;background:var(--card2);border:1px solid var(--line)}
-.seg div{flex:1;text-align:center;padding:8px 0;border-radius:8px;font-size:12px;font-weight:600;color:var(--sub);white-space:nowrap}
-.seg div.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,0.18)}
-
-/* floating */
-#bubble{position:absolute;width:60px;height:60px;border-radius:50%;opacity:0}
-#hint{position:absolute;padding:8px 13px;border-radius:10px;background:var(--ink);color:var(--bg);font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 10px 24px rgba(0,0,0,0.25);opacity:0}
-#qpanel{position:absolute;width:300px;padding:16px;border-radius:20px;background:var(--glass);backdrop-filter:blur(28px) saturate(170%);border:1px solid var(--line);box-shadow:var(--hi),0 30px 80px rgba(0,0,0,0.30);display:flex;flex-direction:column;gap:14px;opacity:0;transform-origin:100% 0}
-
-/* caption */
-#cap{position:absolute;left:56px;bottom:44px;padding:14px 24px 15px;border-radius:18px;background:rgba(31,30,27,0.90);color:#F5F3EE;box-shadow:0 14px 36px rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.10);opacity:0}
-#cap b{display:block;font-size:34px;font-weight:650;letter-spacing:-0.02em;line-height:1.15;white-space:nowrap}
-#cap span{display:block;font-size:16px;color:#CFC9BE;margin-top:4px;white-space:nowrap}
-
-/* cursor */
-#cursor{position:absolute;left:0;top:0;width:24px;height:28px;opacity:0;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35));z-index:50}
-#click{position:absolute;width:40px;height:40px;border-radius:50%;border:2px solid var(--accent);opacity:0;z-index:49}
-
-#flash{position:absolute;inset:0;background:#000;opacity:0;z-index:60;pointer-events:none}
-
-/* end card */
-#end{position:absolute;inset:0;background:radial-gradient(900px 560px at 50% 40%,#2C2A26 0%,#1D1C1A 70%);color:#F3F0EA;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;opacity:0;z-index:70}
-#end .ic{width:96px;height:96px;border-radius:28px;background:#D97757;display:grid;place-items:center;box-shadow:0 18px 50px rgba(217,119,87,0.35)}
-#end h1{margin:26px 0 0;font-size:64px;font-weight:650;letter-spacing:-0.03em;line-height:1}
-#end .v{margin-top:14px;padding:5px 16px;border-radius:999px;background:rgba(217,119,87,0.18);color:#EB9475;font-size:22px;font-weight:700;letter-spacing:.04em}
-#end .cmd{margin-top:34px;padding:16px 28px;border-radius:14px;background:#272624;border:1px solid rgba(255,255,255,0.12);font-family:ui-monospace,'SF Mono',Menlo,'DejaVu Sans Mono',monospace;font-size:24px;color:#F3F0EA}
-#end .cmd i{color:#72C2AF;font-style:normal;margin-right:12px}
-#end .fine{position:absolute;bottom:34px;font-size:19px;color:#CFC9BE;letter-spacing:.02em}
-</style>
-</head>
-<body>
-<div id="stage">
-  <div id="menubar">
-    <svg id="mbapple" width="13" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.7c0-2.5 2-3.6 2.1-3.7-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.800.9s-2-.9-3.300-.9C6.100 7 4.500 8 3.700 9.500c-1.700 3-.4 7.400 1.200 9.800.8 1.200 1.800 2.500 3 2.400 1.200 0 1.700-.8 3.100-.8s1.900.8 3.200.8 2.100-1.200 2.900-2.400c.9-1.300 1.300-2.700 1.300-2.700s-2.500-.9-2.500-3.900zM14 5.500c.7-.8 1.100-1.900 1-3-1 0-2.100.6-2.800 1.400-.6.700-1.100 1.800-1 2.900 1.100.1 2.100-.5 2.800-1.300z"/></svg>
-    <span style="font-weight:700">Terminal</span><span>Shell</span><span>Edit</span><span>View</span><span>Window</span>
-    <div class="r">
-      <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.500 12.500a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.500" r="1"/></svg>
-      <div id="mbicon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5V21M8 10h8M5 14a7 7 0 0 0 14 0"/></svg></div>
-      <svg width="24" height="12" viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="22" height="12" rx="3.500"/><rect x="3" y="3" width="15" height="8" rx="1.500" fill="currentColor" stroke="none"/><path d="M25 5v4" stroke-linecap="round"/></svg>
-      <span style="font-variant-numeric:tabular-nums">Thu 15 Oct&nbsp; 10:42</span>
-    </div>
-  </div>
-
-  <div id="term">
-    <div class="tb"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span style="flex:1;text-align:center;color:#A9A49B;font-size:12px;margin-right:52px">website — claude</span></div>
-    <div class="bd">
-      <div><span style="color:#72C2AF">~/code/website</span> $ claude</div>
-      <div id="termroute" style="color:#EB9475"></div>
-      <div style="color:#A9A49B">Welcome back. What would you like to work on?</div>
-      <div>&gt; tidy up the pricing page layout</div>
-    </div>
-  </div>
-
-  <!-- popover / window -->
-  <div id="pop">
-    <div id="titlebar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span style="flex:1;text-align:center;margin-right:52px;font-weight:600">Claude Anchor</span></div>
-    <div id="popbody">
-      <div id="main">
-        <div style="display:flex;align-items:center;gap:10px;height:34px;flex:none">
-          <div style="width:30px;height:30px;border-radius:9px;background:var(--accentFill);display:grid;place-items:center;box-shadow:0 4px 12px var(--accentGlow)">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--accentInk)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5V21M8 10h8M5 14a7 7 0 0 0 14 0"/></svg>
-          </div>
-          <div id="hdr" style="display:flex;flex-direction:column;gap:1px">
-            <div style="font-size:14px;font-weight:650;letter-spacing:-0.01em">Claude Anchor</div>
-            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--sub)"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--okSoft)"></span><span id="upd"></span></div>
-          </div>
-          <div style="flex:1"></div>
-          <div class="ibtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="16" cy="14" r="3"/></svg></div>
-          <div class="ibtn" id="refbtn"><svg id="refico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></div>
-        </div>
-
-        <div id="harborwrap">
-          <div style="display:flex;justify-content:space-between;align-items:baseline"><div class="lbl" style="color:var(--sub)">Drop anchor</div><div id="hhint" style="font-size:11.5px;font-weight:600"></div></div>
-          <div id="harbor">
-            <svg viewBox="0 0 348 240" width="348" height="240" style="position:absolute;inset:0">
-              <g id="wave1"><path d="M0 80 q21.750 -7 43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 L696 240 L0 240 Z" style="fill:var(--water)"/></g>
-              <g id="wave2"><path d="M0 88 q21.750 -5 43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0 t43.500 0" fill="none" style="stroke:var(--foam)" stroke-width="1.2"/></g>
-              <path d="M0 214 Q70 200 150 212 T348 206 L348 240 L0 240 Z" style="fill:var(--sand)"/>
-              <ellipse id="rip1" cx="174" cy="80" rx="0" ry="0" fill="none" style="stroke:var(--accent)" stroke-width="1.5" opacity="0"/>
-              <ellipse id="rip2" cx="174" cy="80" rx="0" ry="0" fill="none" style="stroke:var(--accent)" stroke-width="1" opacity="0"/>
-            </svg>
-            <div class="berth" id="b0" style="left:6px"><span class="fl"></span><span class="n">Work</span><span class="s"></span></div>
-            <div class="berth" id="b1" style="left:122px"><span class="fl"></span><span class="n">Client</span><span class="s"></span></div>
-            <div class="berth" id="b2" style="left:238px"><span class="fl"></span><span class="n">Personal</span><span class="s"></span><span class="badge" id="badge">Fresh</span></div>
-            <svg viewBox="0 0 348 240" width="348" height="240" style="position:absolute;inset:0;pointer-events:none">
-              <path id="chain1" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="5" stroke-linecap="round"/>
-              <path id="chain2" fill="none" style="stroke:var(--chain)" stroke-width="3" stroke-dasharray="5 3" stroke-linecap="round"/>
-              <rect x="132" y="-12" width="84" height="24" rx="9" style="fill:var(--card2);stroke:var(--line)"/>
-              <circle cx="174" cy="6" r="4.500" style="fill:var(--accent)"/>
-            </svg>
-            <div id="anchor"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" style="stroke:var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5V21M8 10h8M5 14a7 7 0 0 0 14 0"/></svg></div>
-          </div>
-        </div>
-
-        <div id="freshwrap">
-          <div id="fresh">
-            <div style="display:flex;gap:10px;align-items:flex-start">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M4 12a8 8 0 0 1 13.700-5.700L20 8.500M20 4v4.500h-4.500"/><path d="M20 12a8 8 0 0 1-13.700 5.700L4 15.500M4 20v-4.500h4.500"/></svg>
-              <div style="display:flex;flex-direction:column;gap:2px"><div style="font-weight:600">Personal has a full 5-hour window</div><div style="font-size:12px;color:var(--sub)">Reset 8 min ago. Anchor there to use it before it starts ticking.</div></div>
-            </div>
-            <div id="freshbtn"><span class="fl"></span><span>Anchor at Personal</span></div>
-          </div>
-        </div>
-
-        <div class="card" id="ringcard" style="padding:16px 16px 18px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--hi),var(--lift);flex:none">
-          <div style="display:flex;align-items:center;gap:11px">
-            <span id="curflag"></span>
-            <div style="display:flex;flex-direction:column;flex:1;min-width:0"><div id="curname" style="font-size:16px;font-weight:650;letter-spacing:-0.015em"></div><div id="curmail" style="font-size:12px;color:var(--sub)"></div></div>
-            <span id="curplan" style="padding:4px 10px;border-radius:999px;background:var(--accentSoft);color:var(--accentText);font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase"></span>
-          </div>
-          <div style="height:1px;background:var(--line)"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="ringcol" id="r5"></div>
-            <div class="ringcol" id="rw"></div>
-          </div>
-        </div>
-
-        <div class="card" style="padding:15px 16px 16px;display:flex;flex-direction:column;gap:13px;flex:none;box-shadow:var(--hi)">
-          <div style="display:flex;align-items:center;justify-content:space-between"><div class="lbl" style="color:var(--sub)">Usage</div>
-            <div style="display:flex;padding:2px;border-radius:9px;background:var(--card2);border:1px solid var(--line);font-size:11.5px;font-weight:600"><span style="padding:4px 10px;color:var(--sub)">Today</span><span style="padding:4px 10px;border-radius:7px;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,0.18)">7 days</span><span style="padding:4px 10px;color:var(--sub)">30 days</span></div></div>
-          <div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:28px;font-weight:300;letter-spacing:-0.03em">2.4M</div><div style="font-size:12px;color:var(--sub)">tokens · ≈$28.40</div></div>
-          <div style="height:4px;border-radius:2px;background:var(--track);overflow:hidden"><div style="height:4px;width:70%;background:var(--accent)"></div></div>
-        </div>
-      </div>
-
-      <div id="settings">
-        <div style="display:flex;align-items:center;gap:10px;height:34px"><div style="font-size:18px;font-weight:650;letter-spacing:-0.015em">Settings</div></div>
-        <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--hi)">
-          <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-weight:650;font-size:14px">Refresh limits</div><div id="setnote" style="font-size:11.5px;color:var(--sub)">Every 1 min</div></div>
-          <div class="seg" id="seg"><div>Live</div><div>1 min</div><div>5 min</div><div>15 min</div><div>Manual</div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- floating button + quick panel -->
-  <div id="hint">Drag me anywhere · click to open</div>
-  <div id="bubble">
-    <svg viewBox="0 0 60 60" width="60" height="60" style="position:absolute;inset:0;filter:drop-shadow(0 8px 14px rgba(40,25,10,0.30))">
-      <defs><linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" id="bg1" stop-color="#5FB3A1"/><stop offset="1" id="bg2" stop-color="#2F7F6F"/></linearGradient></defs>
-      <circle cx="30" cy="30" r="29.500" style="fill:var(--card)"/>
-      <circle cx="30" cy="30" r="29" fill="none" style="stroke:var(--line)"/>
-      <circle cx="30" cy="30" r="24.500" fill="none" style="stroke:var(--track)" stroke-width="4"/>
-      <circle id="bring" cx="30" cy="30" r="24.500" fill="none" stroke="url(#bgrad)" stroke-width="4" stroke-linecap="round" transform="rotate(-90 30 30)"/>
-      <circle cx="30" cy="30" r="19" fill="#D97757"/>
-      <g transform="translate(20.500 20.500) scale(0.8)" fill="none" stroke="#FFFFFF" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.500" r="2"/><path d="M12 6.500V21M8 10h8M5 14a7 7 0 0 0 14 0"/></g>
-    </svg>
-    <span style="position:absolute;right:-3px;bottom:1px;padding:2px;border-radius:4px;background:var(--card);border:1px solid var(--line);line-height:0" id="bflag"></span>
-  </div>
-  <div id="qpanel">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span id="qflag"></span>
-      <div style="display:flex;flex-direction:column;flex:1"><div style="font-size:15px;font-weight:650;letter-spacing:-0.01em">Personal</div><div style="font-size:11.5px;color:var(--sub)">Default account</div></div>
-      <span style="padding:3px 9px;border-radius:999px;background:var(--accentSoft);color:var(--accentText);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Pro</span>
-      <div style="width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--card2);display:grid;place-items:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:11px">
-      <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:baseline;gap:6px"><span class="lbl">5-hour</span><span style="font-size:11.5px;color:var(--sub);flex:1">Resets in 4h 48m</span><span style="font-size:18px;font-weight:300;letter-spacing:-0.03em">12%</span></div><div style="height:5px;border-radius:3px;background:var(--track);overflow:hidden"><div style="height:5px;width:12%;border-radius:3px;background:linear-gradient(90deg,#5FB3A1,#2F7F6F)"></div></div></div>
-      <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:baseline;gap:6px"><span class="lbl">Weekly</span><span style="font-size:11.5px;color:var(--sub);flex:1">Resets Sun</span><span style="font-size:18px;font-weight:300;letter-spacing:-0.03em">9%</span></div><div style="height:5px;border-radius:3px;background:var(--track);overflow:hidden"><div style="height:5px;width:9%;border-radius:3px;background:linear-gradient(90deg,#5FB3A1,#2F7F6F)"></div></div></div>
-    </div>
-  </div>
-
-  <div id="cap"><b></b><span></span></div>
-  <div id="click"></div>
-  <svg id="cursor" viewBox="0 0 24 28"><path d="M3 2 L3 21 L7.800 16.800 L10.800 23.800 L14 22.400 L11 15.600 L17.500 15.600 Z" fill="#141414" stroke="#fff" stroke-width="1.500" stroke-linejoin="round"/></svg>
-  <div id="flash"></div>
-  <div id="end">
-    <div class="ic"><svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#fff" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.500" r="2"/><path d="M12 6.500V21M8 10h8M5 14a7 7 0 0 0 14 0"/></svg></div>
-    <h1>Claude Anchor</h1>
-    <div class="v">v0.3</div>
-    <div class="cmd"><i>$</i>brew upgrade --cask claude-anchor</div>
-    <div class="fine">Design preview of v0.3</div>
-  </div>
-</div>
-
-<script>
-const $ = s => document.querySelector(s);
-const clamp = (x,a=0,b=1)=>Math.min(b,Math.max(a,x));
-const ease = x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
-const eo = x=>1-Math.pow(1-x,3);
-const eob = x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
-const P=(t,a,b)=>clamp((t-a)/(b-a));
-const E=(t,a,b)=>ease(P(t,a,b));
-const lerp=(a,b,k)=>a+(b-a)*k;
-function track(t,pts,f=ease){
-  if(t<=pts[0][0]) return pts[0][1];
-  for(let i=0;i<pts.length-1;i++){ if(t<pts[i+1][0]) return lerp(pts[i][1],pts[i+1][1],f(P(t,pts[i][0],pts[i+1][0]))); }
-  return pts[pts.length-1][1];
-}
-
-/* ---------- signal flags (from Flag.dc.html) ---------- */
-function flag(kind,w){
-  const B='#1D3A8F',R='#C0262D',W='#FFFFFF';
-  const r=(x,y,ww,hh,fill)=>`<path d="M${x} ${y}h${ww}v${hh}h-${ww}Z" fill="${fill}"/>`;
-  const sets={
-    work:r(0,0,30,20,B)+r(3.5,3.5,23,13,W)+r(9,6.5,12,7,R),
-    client:r(0,0,30,4,B)+r(0,4,30,4,W)+r(0,8,30,4,R)+r(0,12,30,4,W)+r(0,16,30,4,B),
-    personal:r(0,0,30,20,B)+r(9,6,12,8,W)
-  };
-  return `<span style="display:inline-flex;flex:none;line-height:0"><svg viewBox="0 0 30 20" width="${w}" height="${Math.round(w*2/3)}">${sets[kind]}<rect x="0.5" y="0.5" width="29" height="19" fill="none" stroke="rgba(128,128,128,0.35)"/></svg></span>`;
-}
-document.querySelectorAll('#b0 .fl').forEach(e=>e.innerHTML=flag('work',20));
-document.querySelectorAll('#b1 .fl').forEach(e=>e.innerHTML=flag('client',20));
-document.querySelectorAll('#b2 .fl').forEach(e=>e.innerHTML=flag('personal',20));
-$('#freshbtn .fl').innerHTML=flag('personal',16);
-$('#bflag').innerHTML=flag('personal',17);
-$('#qflag').innerHTML=flag('personal',26);
-
-/* ---------- rings ---------- */
-const C=2*Math.PI*48;
-function ringHTML(id,label){
-  return `<div style="position:relative;width:112px;height:112px">
-  <svg viewBox="0 0 112 112" width="112" height="112" style="transform:rotate(-90deg)"><defs><linearGradient id="g${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5FB3A1"/><stop offset="1" stop-color="#2F7F6F"/></linearGradient></defs>
-  <circle cx="56" cy="56" r="48" fill="none" style="stroke:var(--track)" stroke-width="7"/>
-  <circle id="${id}arc" cx="56" cy="56" r="48" fill="none" stroke="url(#g${id})" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 ${C}"/></svg>
-  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div class="rt"><b id="${id}pct" style="font-weight:300">0</b><span>%</span></div></div></div>
-  <div style="display:flex;flex-direction:column;align-items:center;gap:2px"><div class="lbl">${label}</div><div class="reset" id="${id}rs"></div></div>`;
-}
-$('#r5').innerHTML=ringHTML('r5','5-hour'); $('#rw').innerHTML=ringHTML('rw','Weekly');
-
-const ACC={
-  work:{name:'Work',mail:'you@work.example',plan:'Pro',flag:'work'},
-  client:{name:'Client',mail:'you@client.example',plan:'Max',flag:'client'},
-  personal:{name:'Personal',mail:'you@home.example',plan:'Pro',flag:'personal'}
-};
-const T_DOCK1=6.7, T_DOCK2=12.45, T_REFRESH=14.5, T_FLIP=9.2;
-
-/* ---------- geometry (resolved at init) ---------- */
-const S=0.92, POP_L0=900, POP_T0=32;
-const berthX=[58,174,290];
-const WIN_L=470, WIN_T=58, TB=28;
-const popLeft=t=>track(t,[[17.2,POP_L0],[18.6,WIN_L]]);
-const popTop=t=>track(t,[[17.2,POP_T0],[18.6,WIN_T]]);
-const winP=t=>E(t,16.85,17.25);
-let R={};  // cached screen targets
-
-function popOrigin(t){return {x:popLeft(t),y:popTop(t)+TB*S*winP(t)};} // top-left of #popbody in screen coords
-function localToScreen(t,x,y){ // popbody-local -> screen
-  const o=popOrigin(t); return {x:o.x+x*S,y:o.y+y*S};
-}
-function harborToScreen(t,x,y){ return {x:R.hx0 + (popOrigin(t).x-popOrigin(0).x) + x*S, y:R.hy0 + (popOrigin(t).y-popOrigin(0).y) + y*S}; }
-
-/* ---------- anchor tracks (harbor-local) ---------- */
-const axT=[[4.85,58],[6.55,174],[11.45,174],[12.4,290]];
-const ayT=[[4.85,142],[5.45,108],[6.2,110],[6.7,142],[11.45,142],[11.85,106],[12.1,106],[12.5,142]];
-const activeIdx=t=> t<T_DOCK1?0 : t<T_DOCK2?1 : 2;
-const lifted=t=>(t>4.85&&t<6.7)||(t>11.5&&t<12.45);
-
-/* ---------- cursor script ---------- */
-let wps=[];
-function buildCursor(){
-  const g=(x,y)=>harborToScreen(0,x,y);
-  const gx=76*S, gy=33*S;                  // grab point on header title, in popbody coords
-  const grab0={x:POP_L0+gx,y:POP_T0+gy};
-  const fb=R.freshbtn, rb=R.refbtn;
-  wps=[
-    [3.5,{x:800,y:560}],[4.8,g(58,146)],[4.85,g(58,146)],
-    [6.7,g(174,146)],[7.0,g(174,146)],[8.6,{x:780,y:320}],[9.9,{x:790,y:330}],
-    [11.2,{x:fb.x-24,y:fb.y+3}],[11.55,{x:fb.x-24,y:fb.y+3}],[12.8,{x:760,y:420}],[13.3,{x:780,y:430}],
-    [13.95,{x:rb.x,y:rb.y}],[14.25,{x:rb.x,y:rb.y}],[15.3,{x:720,y:500}],[16.2,{x:760,y:420}],
-    [16.8,grab0],
-    [18.6,{x:WIN_L+gx,y:WIN_T+gy+TB*S}],[19.0,{x:WIN_L+gx,y:WIN_T+gy+TB*S}],[19.6,{x:300,y:560}],
-    [20.4,{x:520,y:470}],[20.85,{x:330,y:530}]
-  ];
-}
-function cursorPos(t){
-  if(!wps.length) return {x:0,y:0};
-  if(t>=4.85&&t<6.7){ const p=harborToScreen(t,track(t,axT),track(t,ayT)+4); return p; }
-  if(t>=16.85&&t<=18.6){ const gx=76*S,gy=33*S; return {x:popLeft(t)+gx,y:popTop(t)+gy+TB*S*winP(t)}; }
-  if(t>=20.9&&t<22.05){ const b=bubblePos(t); return {x:b.x+30,y:b.y+30}; }
-  if(t>=22.05){ const b=bubblePos(t);
-    return {x:track(t,[[22.05,b.x+30],[22.5,b.x-10],[22.85,b.x+30]]),y:track(t,[[22.05,b.y+30],[22.5,b.y+80],[22.85,b.y+30]])}; }
-  if(t<=wps[0][0]) return wps[0][1];
-  for(let i=0;i<wps.length-1;i++){
-    if(t<wps[i+1][0]){ const k=ease(P(t,wps[i][0],wps[i+1][0])); const a=wps[i][1],b=wps[i+1][1];
-      const arc=(a.x===b.x&&a.y===b.y)?0:-Math.sin(Math.PI*k)*14; return {x:lerp(a.x,b.x,k),y:lerp(a.y,b.y,k)+arc}; }
-  }
-  return wps[wps.length-1][1];
-}
-const cursorAlpha=t=>track(t,[[3.5,0],[3.9,1],[19.3,1],[19.7,0],[20.3,0],[20.6,1],[23.5,1],[23.8,0]]);
-const clicks=[11.4,14.0,22.85];
-const pressed=t=>clicks.some(c=>t>c-0.08&&t<c+0.10)||(t>4.85&&t<6.7)||(t>16.85&&t<18.6)||(t>20.9&&t<22.0);
-
-/* ---------- bubble ---------- */
-function bubblePos(t){
-  if(t<22.0) return {x:track(t,[[20.9,300],[22.0,1120]]),y:track(t,[[20.9,500],[21.4,370],[22.0,330]])};
-  return {x:1120+90*eob(P(t,22.0,22.6)),y:330};
-}
-
-/* ---------- captions ---------- */
-const CAPS=[
- [0.4,3.7,'See every limit at a glance','5-hour and weekly limits, always in your menu bar'],
- [4.0,8.8,'Drop the anchor','Drag it onto the account you want as default'],
- [9.0,12.9,'Free full resets, spotted','A fresh 5-hour window gets a badge'],
- [13.0,15.9,'Refresh any time','Choose how often: Live, 1 min, 5 min, 15 min, Manual'],
- [16.0,19.9,'Pop it out','Keep the popover in its own window'],
- [20.1,23.9,'Or keep a floating anchor','Drag it anywhere, it snaps to the edge'],
-];
-
-/* ---------- main render ---------- */
-let lastKey={};
-function setHTML(el,key,html){ if(lastKey[el.id]!==key){ el.innerHTML=html; lastKey[el.id]=key; } }
-
-function seek(t){
-  const dark = t>=23.35;
-  $('#stage').classList.toggle('dark',dark);
-  $('#flash').style.opacity = track(t,[[23.2,0],[23.35,0.45],[23.55,0]]);
-
-  /* popover / window */
-  const open=eo(P(t,0.3,0.9)), closeP=P(t,19.3,19.7);
-  const pop=$('#pop'), w=winP(t);
-  const inWin=t>16.85;
-  const L=popLeft(t), Tp=popTop(t);
-  const sc=S*(0.95+0.05*open)*(1-0.04*closeP) * (1+0.012*(t>17.0&&t<18.6?1:0));
-  pop.style.transform=`translate(${L}px,${Tp+(1-open)*-8}px) scale(${sc})`;
-  pop.style.opacity = open*(1-closeP);
-  pop.style.display = (t<0.3||t>19.75)?'none':'block';
-  pop.style.borderRadius=lerp(14,10,w)+'px';
-  pop.style.boxShadow = inWin ? `0 0 0 1px var(--line),0 ${lerp(24,34,w)}px ${lerp(60,80,w)}px rgba(40,25,10,0.36)` : '0 0 0 1px var(--line),0 24px 60px rgba(40,25,10,0.30)';
-  $('#titlebar').style.height=(TB*w)+'px';
-  $('#titlebar').style.opacity=w;
-  $('#mbicon').style.background = (t>=0.3&&t<17.0)?'var(--accentSoft)':'transparent';
-  $('#mbicon').style.color = (t>=0.3&&t<17.0)?'var(--accentText)':'inherit';
-
-  /* header text */
-  const ai=activeIdx(t);
-  const key=['work','client','personal'][t<T_DOCK1+0.05?0:(t<T_DOCK2+0.05?1:2)];
-  const A=ACC[key];
-  $('#upd').textContent=`${A.name} · ${t<T_REFRESH?'Updated 4 min ago':'Updated just now'}`;
-  setHTML($('#curflag'),key,flag(A.flag,27));
-  $('#curname').textContent=A.name; $('#curmail').textContent=A.mail; $('#curplan').textContent=A.plan;
-  $('#termroute').textContent=`anchor: routed to ${A.name} (folder rule ~/code/website)`;
-
-  /* rings */
-  const five=track(t,[[0.7,0],[2.2,68],[6.75,68],[7.6,24],[12.5,24],[13.3,0],[14.5,0],[15.1,12]],ease);
-  const week=track(t,[[0.8,0],[2.4,31],[6.75,31],[7.6,54],[12.5,54],[13.3,8],[14.5,8],[15.1,9]],ease);
-  [['r5',five],['rw',week]].forEach(([id,v])=>{
-    $('#'+id+'arc').setAttribute('stroke-dasharray',`${(C*v/100).toFixed(2)} ${C.toFixed(2)}`);
-    $('#'+id+'arc').style.opacity = v<0.4?0:1;
-    $('#'+id+'pct').textContent=Math.round(v);
-  });
-  const rs = t<T_DOCK1+0.4?['Resets in 1h 39m','Resets Fri']
-           : t<T_DOCK2+0.4?['Resets in 3h 12m','Resets Mon']
-           : t<T_REFRESH?['Full window · reset 8 min ago','Resets Sun']
-           : ['Resets in 4h 48m','Resets Sun'];
-  $('#r5rs').textContent=rs[0]; $('#rwrs').textContent=rs[1];
-
-  /* harbor */
-  const dx=-87*((t/7)%1), dx2=-87*((t/11)%1);
-  $('#wave1').setAttribute('transform',`translate(${dx} 0)`);
-  $('#wave2').setAttribute('transform',`translate(${dx2} 0)`);
-  const lf=lifted(t);
-  const ax=track(t,axT), ay=track(t,ayT);
-  const vx=(t<4.85)?58:ax;
-  const velx=(track(t+0.03,axT)-track(t-0.03,axT))/0.06;
-  const rot=clamp(velx*0.05,-16,16)*(lf?1:0);
-  const A_=$('#anchor');
-  const restX=berthX[ai]; const x=lf?ax:(t<4.85?58:(t<T_DOCK2?174:290)); // rest positions follow axT anyway
-  A_.style.left=(x-20)+'px'; A_.style.top=(ay-20)+'px';
-  A_.style.transform=`rotate(${rot}deg) scale(${lf?1.12:1})`;
-  A_.style.filter=`drop-shadow(0 5px 8px rgba(0,0,0,0.28)) drop-shadow(0 0 ${lf?10:0}px var(--accent))`;
-  const tipY=ay-17;
-  const sag=Math.max(8,46-Math.abs(x-174)*0.12-(lf?20:0));
-  const d=`M174 10 Q${((174+x)/2).toFixed(1)} ${((10+tipY)/2+sag).toFixed(1)} ${x.toFixed(1)} ${tipY.toFixed(1)}`;
-  $('#chain1').setAttribute('d',d); $('#chain2').setAttribute('d',d);
-  // ripples
-  const rip=(el,t0,cx,off)=>{const k=P(t,t0+off,t0+1.0+off); const r=6+86*eo(k); el.setAttribute('cx',cx); el.setAttribute('rx',r); el.setAttribute('ry',r*0.2); el.setAttribute('opacity',k>0&&k<1?(1-k)*0.9:0);};
-  const rt0=t<9?T_DOCK1-0.05:T_DOCK2-0.05, rcx=t<9?174:290;
-  rip($('#rip1'),rt0,rcx,0); rip($('#rip2'),rt0,rcx,0.25);
-  // berths
-  const hot=(i)=>lf && Math.abs(ax-berthX[i])<34 && ((t>5.9&&t<6.7)||(t>12.0&&t<12.45));
-  const flipped=t>=T_FLIP;
-  const stat=[
-    (i=>({txt:(ai===0&&!lf)?'Anchored · 68%':'5h 68%',c:(ai===0&&!lf)?'var(--accentText)':'var(--ok)'})),
-    (i=>({txt:(ai===1&&!lf)?'Anchored · 24%':'5h 24%',c:(ai===1&&!lf)?'var(--accentText)':'var(--ok)'})),
-    (i=>flipped?{txt:(ai===2&&!lf)?(t>=T_REFRESH?'Anchored · 12%':'Anchored · full 5h'):'Full 5h window',c:(ai===2&&!lf)?'var(--accentText)':'var(--ok)'}:{txt:'94% · ↻ 1m',c:'var(--crit)'})
-  ];
-  for(let i=0;i<3;i++){
-    const b=$('#b'+i); const on=(i===ai&&!lf); const h=hot(i);
-    const pulse = (i===2&&t>=T_FLIP&&t<T_FLIP+1.2)?(1-P(t,T_FLIP,T_FLIP+1.2)):0;
-    b.style.borderColor=(h||on)?'var(--accent)':(pulse>0?'var(--ok)':'var(--line)');
-    b.style.background=(h||on)?'var(--accentSoft)':'var(--card)';
-    b.style.boxShadow = h?'0 0 0 4px var(--accentSoft),0 0 22px var(--accentGlow)': on?'0 0 0 3px var(--accentSoft)' : (pulse>0?`0 0 0 ${4*pulse}px var(--okSoft),0 0 ${22*pulse}px rgba(47,127,111,${0.5*pulse})`:'var(--hi)');
-    const s=stat[i](); const se=b.querySelector('.s'); se.textContent=s.txt; se.style.color=s.c;
-  }
-  const bd=$('#badge'); const bk=eob(P(t,T_FLIP+0.05,T_FLIP+0.5));
-  bd.style.display=flipped?'grid':'none'; bd.style.transform=`scale(${bk})`;
-  const hh=$('#hhint');
-  hh.textContent = lf ? 'Drop on an account' : 'Anchored at '+A.name;
-  hh.style.color = lf ? 'var(--sub)' : 'var(--accentText)';
-
-  /* fresh card */
-  const g=E(t,9.4,10.0)-E(t,12.5,13.0);
-  const fw=$('#freshwrap'); fw.style.height=(g*R.freshH)+'px'; fw.style.opacity=g; fw.style.marginTop=(-14*(1-g))+'px';
-  $('#freshbtn').style.transform = (t>11.33&&t<11.5)?'scale(0.95)':'scale(1)';
-  $('#freshbtn').style.filter = (t>11.33&&t<11.5)?'brightness(0.9)':'none';
-
-  /* refresh button */
-  const sp=P(t,14.0,15.0); $('#refico').style.transform=`rotate(${720*ease(sp)}deg)`;
-  $('#refbtn').style.background = (t>13.97&&t<14.9)?'var(--card2)':'var(--card)';
-  $('#refbtn').style.color = (t>13.97&&t<15.0)?'var(--accentText)':'var(--sub)';
-
-  /* settings glimpse */
-  const so=E(t,15.0,15.3)-E(t,15.8,16.0);
-  const se=$('#settings'); se.style.opacity=so; se.style.pointerEvents='none';
-  $('#main').style.opacity=1-so;
-  const segSel = t<15.45?1:(t<15.62?2:1);
-  document.querySelectorAll('#seg div').forEach((d,i)=>d.classList.toggle('on',i===1));
-  // sweep highlight to show the options
-  const hl=Math.floor(track(t,[[15.25,0],[15.75,4.99]],x=>x));
-  document.querySelectorAll('#seg div').forEach((d,i)=>{ if(t>15.25&&t<15.8){ d.style.color = i===hl?'var(--accentText)':''; } else d.style.color=''; });
-
-  /* floating button */
-  const bu=$('#bubble'); const bp=bubblePos(t);
-  const bIn=eob(P(t,20.15,20.6)); const bOut=P(t,23.95,24.2);
-  const dragging=(t>20.9&&t<22.0);
-  bu.style.opacity=(t>=20.15&&t<24.2)?clamp(P(t,20.15,20.35))*(1-bOut):0;
-  bu.style.left=bp.x+'px'; bu.style.top=bp.y+'px';
-  bu.style.transform=`scale(${bIn*(dragging?1.1:1)})`;
-  bu.style.filter = dragging?'drop-shadow(0 14px 18px rgba(40,25,10,0.28))':'none';
-  const bv=12;
-  $('#bring').setAttribute('stroke-dasharray',`${(2*Math.PI*24.5*bv/100).toFixed(2)} 200`);
-  const hn=$('#hint'); hn.style.left=(bp.x-60)+'px'; hn.style.top=(bp.y-50)+'px';
-  hn.style.opacity = track(t,[[20.4,0],[20.65,1],[20.85,1],[21.0,0]],x=>x);
-  const q=$('#qpanel'); const qo=eob(P(t,22.9,23.3));
-  q.style.left=(1210-300-14)+'px'; q.style.top=(330-10)+'px';
-  q.style.opacity=(t>=22.9&&t<24.2)?clamp(P(t,22.9,23.1))*(1-bOut):0;
-  q.style.transform=`scale(${0.9+0.1*qo})`;
-
-  /* caption */
-  const cp=$('#cap'); let cc=null;
-  for(const c of CAPS){ if(t>=c[0]&&t<c[1]) cc=c; }
-  if(cc){ const a=Math.min(P(t,cc[0],cc[0]+0.3),1-P(t,cc[1]-0.25,cc[1]));
-    cp.style.opacity=a; cp.style.transform=`translateY(${(1-eo(P(t,cc[0],cc[0]+0.35)))*10}px)`;
-    cp.querySelector('b').textContent=cc[2]; cp.querySelector('span').textContent=cc[3];
-  } else cp.style.opacity=0;
-
-  /* cursor */
-  const cu=$('#cursor'); const cpos=cursorPos(t); const ca=cursorAlpha(t);
-  cu.style.opacity=ca; cu.style.transform=`translate(${cpos.x-3}px,${cpos.y-2}px) scale(${pressed(t)?0.88:1})`;
-  const ck=clicks.find(c=>t>=c&&t<c+0.45);
-  const cl=$('#click');
-  if(ck!==undefined){ const k=P(t,ck,ck+0.45); cl.style.opacity=(1-k)*0.8; cl.style.transform=`translate(${cpos.x-20}px,${cpos.y-20}px) scale(${0.3+0.9*eo(k)})`; } else cl.style.opacity=0;
-
+  :root { --paper:#F5F3EE; --ink:#2B2622; --muted:#6E655C; --clay:#B9583A; --accent:#D97757; --teal:#2A7262; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:1280px; height:720px; overflow:hidden; background:var(--paper); }
+  body { font-family:-apple-system,"SF Pro Display","Helvetica Neue",sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; }
+  #stage { position:absolute; inset:0; overflow:hidden; background:radial-gradient(1200px 700px at 75% 40%, #FBF9F5 0%, #F1EDE5 60%, #E9E3D8 100%); }
+  #night { position:absolute; inset:0; background:radial-gradient(1200px 700px at 75% 40%, #2A2825 0%, #1D1C1A 70%, #151413 100%); opacity:0; }
+  .abs { position:absolute; }
+  img { display:block; }
+  /* menu bar */
+  #menubar { left:0; top:0; width:1280px; height:28px; background:rgba(255,255,255,.62); border-bottom:1px solid rgba(0,0,0,.06);
+             display:flex; align-items:center; justify-content:flex-end; gap:18px; padding:0 18px; font-size:13px; font-weight:500; }
+  #menubar .l { position:absolute; left:18px; display:flex; gap:20px; }
+  #mbicon { width:26px; height:22px; border-radius:5px; display:flex; align-items:center; justify-content:center; }
+  #mbicon img { width:18px; height:18px; }
+  /* captions */
+  .cap { position:absolute; left:84px; top:250px; width:620px; opacity:0; }
+  .cap h1 { font-size:50px; line-height:1.06; font-weight:700; letter-spacing:-1.2px; }
+  .cap p { margin-top:18px; font-size:22px; line-height:1.4; color:var(--muted); max-width:560px; }
+  .cap .k { display:inline-block; font-size:14px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--clay); margin-bottom:16px; }
+  .cap.center { left:0; width:1280px; top:52px; text-align:center; }
+  .cap.center p { margin:12px auto 0; max-width:900px; }
+  .cap.center h1 { font-size:44px; }
+  .dark .cap h1 { color:#F2EEE8; } .dark .cap p { color:#B7AEA4; }
+  /* windows */
+  .win { position:absolute; overflow:hidden; border-radius:12px; background:var(--paper);
+         box-shadow:0 0 0 .5px rgba(0,0,0,.18), 0 18px 50px rgba(60,40,20,.20), 0 4px 12px rgba(60,40,20,.10); }
+  #pop { left:860px; top:36px; width:340px; height:640px; transform-origin:170px 0; }
+  #popin { position:absolute; left:0; top:0; width:340px; }
+  #popin img { position:absolute; left:0; top:-2px; width:340px; }
+  #spin { position:absolute; left:301px; top:31px; width:18px; height:18px; border-radius:50%;
+          background:url(assets/home-personal.png) no-repeat; background-size:340px auto; background-position:-301px -31px; }
+  .ring { position:absolute; border:3px solid var(--teal); border-radius:16px; opacity:0; }
+  #panes { left:0; top:0; }
+  #panes .win { width:340px; height:640px; transform-origin:50% 0; }
+  #panes img { width:340px; }
+  #popout { left:800px; top:70px; width:400px; height:600px; transform-origin:300px 0; }
+  #popout img { width:400px; }
+  /* floating scene */
+  #desk { left:520px; top:70px; width:700px; height:600px; border-radius:12px; background:#FFFFFF; opacity:0;
+          box-shadow:0 0 0 .5px rgba(0,0,0,.14), 0 18px 50px rgba(60,40,20,.14); overflow:hidden; }
+  #desk .bar { height:34px; background:#F3F1EC; border-bottom:1px solid #E6E1D8; display:flex; gap:8px; align-items:center; padding-left:14px; }
+  #desk .bar i { width:12px; height:12px; border-radius:50%; background:#DDD6CB; display:block; }
+  #desk .code { padding:26px 30px; }
+  #desk .code b { display:block; height:11px; border-radius:6px; margin:0 0 15px; background:#ECE7DF; }
+  #fb { left:1040px; top:520px; width:108px; height:108px; }
+  #fb img { position:absolute; inset:0; width:108px; height:108px; }
+  #glow { position:absolute; left:20px; top:18px; width:68px; height:68px; border-radius:50%; box-shadow:0 0 0 0 rgba(42,114,98,.0); }
+  #tip { width:340px; }
+  #quick { width:280px; border-radius:16px; overflow:hidden; box-shadow:0 0 0 .5px rgba(0,0,0,.16), 0 18px 46px rgba(60,40,20,.22); transform-origin:100% 100%; }
+  #quick img { width:280px; display:block; }
+  #quick img + img { position:absolute; left:0; top:0; }
   /* end card */
-  const en=$('#end'); const eo_=E(t,23.95,24.5); en.style.opacity=eo_;
-  en.children[0].style.transform=`scale(${0.9+0.1*eob(P(t,24.0,24.6))})`;
-  en.querySelector('h1').style.opacity=P(t,24.1,24.6);
-  en.querySelector('.v').style.opacity=P(t,24.3,24.8);
-  en.querySelector('.cmd').style.opacity=P(t,24.5,25.0);
-  en.querySelector('.fine').style.opacity=P(t,24.7,25.2);
-}
+  #end { left:0; top:0; width:1280px; height:720px; display:flex; flex-direction:column; align-items:center; justify-content:center; opacity:0; }
+  #logo { width:80px; height:80px; border-radius:18px; overflow:hidden; box-shadow:0 10px 30px rgba(185,88,58,.30); }
+  #logo div { width:80px; height:80px; background:url(assets/home-work.png) no-repeat; background-size:971px auto; background-position:-48.6px -73.6px; }
+  #end h1 { margin-top:26px; font-size:60px; font-weight:700; letter-spacing:-1.5px; }
+  #end h1 span { color:var(--muted); font-weight:500; }
+  #end p { margin-top:10px; font-size:22px; color:var(--muted); }
+  #end code { margin-top:30px; font:500 22px/1 "SF Mono",Menlo,monospace; background:#2B2622; color:#F5F3EE; padding:16px 24px; border-radius:12px; }
+  #end code s { text-decoration:none; color:var(--accent); }
+  /* cursor */
+  #cursor { left:0; top:0; width:26px; height:34px; z-index:50; transform-origin:3px 3px; }
+  #click { width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; border:2.5px solid var(--accent); opacity:0; z-index:49; }
+</style></head>
+<body><div id="stage">
+  <div id="night"></div>
 
-/* ---------- init ---------- */
-function init(){
-  document.querySelector('#pop').style.display='block';
-  seek(11.3);                      // settled state with fresh card open
-  const pb=$('#pop').getBoundingClientRect();
-  R.hx0=$('#harbor').getBoundingClientRect().left; R.hy0=$('#harbor').getBoundingClientRect().top;
-  const fb=$('#freshbtn').getBoundingClientRect(); R.freshbtn={x:fb.left+fb.width/2,y:fb.top+fb.height/2};
-  const rb=$('#refbtn').getBoundingClientRect(); R.refbtn={x:rb.left+rb.width/2,y:rb.top+rb.height/2};
-  // natural height of the fresh card
-  const fw=$('#freshwrap'); fw.style.height='auto'; R.freshH=$('#fresh').getBoundingClientRect().height/S; fw.style.height=R.freshH+'px';
-  // harbor origin must be measured at t=0 pop position with full scale: re-measure
-  seek(2.5);
-  R.hx0=$('#harbor').getBoundingClientRect().left; R.hy0=$('#harbor').getBoundingClientRect().top;
-  seek(11.3);
-  const fb2=$('#freshbtn').getBoundingClientRect(); R.freshbtn={x:fb2.left+fb2.width/2,y:fb2.top+fb2.height/2};
-  buildCursor();
-  window.READY=true;
-  seek(0);
+  <div id="menubar" class="abs">
+    <div class="l"><b>&#63743;</b><span style="font-weight:700">Terminal</span><span>Shell</span><span>Edit</span><span>View</span></div>
+    <span id="mbicon"><img src="assets/menubar-icon.png" alt=""></span><span>Wed 9:41</span>
+  </div>
+
+  <div class="cap" id="c1"><div class="k">Claude Anchor 0.3</div><h1>Every limit at a glance</h1><p>5-hour and weekly limits for every Claude Code account, right in the menu bar.</p></div>
+  <div class="cap" id="c2"><h1>Light or dark</h1><p>Follows your system appearance.</p></div>
+  <div class="cap" id="c3"><h1>Fresh 5-hour windows, spotted</h1><p>Anchor tells you when another account has a full window waiting.</p></div>
+  <div class="cap" id="c4"><h1>Drop the anchor to switch accounts</h1><p>Drag the anchor or click a berth. New sessions start on that account.</p></div>
+  <div class="cap" id="c5"><h1>Refresh any time</h1><p>One click fetches live usage for every account.</p></div>
+  <div class="cap center" id="c6"><h1>Accounts, folder rules, settings</h1><p>Route each folder to its own account. One calm style throughout.</p></div>
+  <div class="cap" id="c7"><h1>Pop it out, quietly</h1><p>A small floating panel. No Dock icon, and it never steals focus.</p></div>
+  <div class="cap" id="c8" style="top:220px;width:440px"><h1>A floating anchor that stays out of the way</h1><p>Its ring is your 5-hour use. It glows teal when a fresh window is waiting.</p></div>
+
+  <div id="pop" class="win">
+    <div id="popin">
+      <img id="hWork" src="assets/home-work.png" alt="">
+      <img id="hDark" src="assets/home-work-dark.png" alt="" style="opacity:0">
+      <img id="hPers" src="assets/home-personal.png" alt="" style="opacity:0">
+      <div id="spin" style="opacity:0"></div>
+      <div class="ring" id="rFresh" style="left:13px;top:309px;width:315px;height:100px"></div>
+      <div class="ring" id="rTag" style="left:274px;top:211px;width:52px;height:21px;border-radius:9px;border-width:2px"></div>
+    </div>
+  </div>
+
+  <div id="panes" class="abs">
+    <div class="win" id="p1" style="left:180px;top:178px"><img src="assets/accounts.png" alt=""></div>
+    <div class="win" id="p2" style="left:470px;top:178px"><img src="assets/rules.png" alt=""></div>
+    <div class="win" id="p3" style="left:760px;top:178px"><img src="assets/settings.png" alt=""></div>
+  </div>
+
+  <div id="popout" class="win"><img src="assets/popout.png" alt=""></div>
+
+  <div id="desk" class="abs"><div class="bar"><i></i><i></i><i></i></div><div class="code" id="codelines"></div></div>
+  <img id="tip" class="abs" src="assets/tip.png" alt="" style="opacity:0">
+  <div id="quick" class="abs" style="opacity:0"><img id="qWork" src="assets/quick-work.png" alt=""><img id="qPers" src="assets/quick-personal.png" alt="" style="opacity:0"></div>
+  <div id="fb" class="abs" style="opacity:0">
+    <div id="glow"></div>
+    <img id="bCalm" src="assets/button-calm.png" alt="">
+    <img id="bWork" src="assets/button-work.png" alt="" style="opacity:0">
+    <img id="bPers" src="assets/button-personal.png" alt="" style="opacity:0">
+  </div>
+
+  <div id="end" class="abs">
+    <div id="logo"><div></div></div>
+    <h1>Claude Anchor <span>v0.3</span></h1>
+    <p>Every Claude Code account, one calm menu bar app.</p>
+    <code><s>$</s> brew install --cask sumithsb/tap/claude-anchor</code>
+  </div>
+
+  <div id="click" class="abs"></div>
+  <svg id="cursor" class="abs" viewBox="0 0 26 34"><path d="M3 2 L3 26 L9 20.5 L13.2 30.5 L17.4 28.7 L13.3 19 L21.5 19 Z" fill="#111" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const out = x => 1 - Math.pow(1 - x, 3);
+const seg = (t, a, b, f = ease) => f(clamp((t - a) / (b - a)));
+const lerp = (a, b, k) => a + (b - a) * k;
+// visible between a and b with fade d at both ends
+const win = (t, a, b, d = .35) => Math.min(seg(t, a, a + d, out), 1 - seg(t, b - d, b));
+
+{ const w = [88, 64, 72, 40, 80, 56, 30, 70, 62, 48, 84, 36, 66, 52, 74, 44, 60, 28];
+  $('codelines').innerHTML = w.map((p, i) => `<b style="width:${p}%;margin-left:${(i % 4 === 0 ? 0 : (i % 3) * 22)}px"></b>`).join(''); }
+
+// Scene boundaries (seconds)
+const S = { glance: 0, dark: 3.8, fresh: 5.4, sw: 7.8, refresh: 10.6, panes: 12.6, popout: 15.4, float: 18.0, end: 23.2, total: 25.6 };
+const POP = { x: 860, y: 36 };
+// cursor path: [t, x, y]; holds between keys, eased moves
+const path = [
+  [0, 640, 420], [.65, 1030, 15], [1.3, 1030, 15], [1.9, 760, 470],
+  [S.sw + .1, 760, 470], [S.sw + 1.0, POP.x + 272, POP.y + 255],
+  [S.refresh + .1, POP.x + 272, POP.y + 255], [S.refresh + .6, POP.x + 310, POP.y + 42], [S.refresh + 1.3, POP.x + 310, POP.y + 42], [S.refresh + 1.9, 780, 520],
+  [S.float + .2, 900, 640], [S.float + 1.3, 1096, 572], [S.float + 2.3, 1096, 572], [S.float + 3.0, 902, 495], [S.float + 4.2, 902, 495], [S.float + 5.0, 900, 660]
+];
+const clicks = [.8, S.sw + 1.2, S.refresh + .75, S.float + 2.2, S.float + 3.2];
+const cursorShown = t => Math.max(win(t, 0, 2.2, .3), win(t, S.sw, S.refresh + 2.2, .3), win(t, S.float + .1, S.float + 5.0, .3));
+
+function cursorAt(t) {
+  for (let i = 0; i < path.length - 1; i++) {
+    const [t0, x0, y0] = path[i], [t1, x1, y1] = path[i + 1];
+    if (t <= t1) { const k = seg(t, t0, t1); return [lerp(x0, x1, k), lerp(y0, y1, k)]; }
+  }
+  const l = path[path.length - 1]; return [l[1], l[2]];
 }
-window.seek=seek;
-document.fonts.ready.then(()=>requestAnimationFrame(init));
-</script>
-</body>
-</html>
+const op = (id, v) => { $(id).style.opacity = v; };
+const tf = (id, v) => { $(id).style.transform = v; };
+
+window.seek = function (t) {
+  // night (dark appearance beat)
+  const dk = Math.min(seg(t, S.dark, S.dark + .45), 1 - seg(t, S.fresh - .45, S.fresh));
+  op('night', dk); $('stage').classList.toggle('dark', dk > .5);
+  $('menubar').style.background = `rgba(${lerp(255, 40, dk)},${lerp(255, 38, dk)},${lerp(255, 36, dk)},.62)`;
+  $('menubar').style.color = dk > .5 ? '#EEE' : '#111';
+  $('mbicon').querySelector('img').style.filter = dk > .5 ? 'invert(1)' : 'none';
+  $('mbicon').style.background = (t > .78 && t < S.panes) || (t > S.popout - .1 && t < S.popout + 2.5) ? (dk > .5 ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.10)') : 'transparent';
+  op('menubar', 1 - seg(t, S.end - .4, S.end));
+
+  // captions
+  const caps = [['c1', 0.9, S.dark], ['c2', S.dark, S.fresh], ['c3', S.fresh, S.sw], ['c4', S.sw, S.refresh], ['c5', S.refresh, S.panes],
+                ['c6', S.panes, S.popout], ['c7', S.popout, S.float], ['c8', S.float, S.end]];
+  for (const [id, a, b] of caps) { const v = win(t, a, b, .4); op(id, v); tf(id, `translateY(${(1 - seg(t, a, a + .5, out)) * 18}px)`); }
+
+  // popover: opens on menubar click, leaves for the panes scene
+  const popIn = seg(t, .8, 1.2, out), popOut = seg(t, S.panes, S.panes + .4);
+  op('pop', popIn * (1 - popOut));
+  tf('pop', `translateY(${(1 - popIn) * -10 + popOut * -10}px) scale(${lerp(.97, 1, popIn)})`);
+  const scroll = 456 * (seg(t, 1.5, 2.7) - seg(t, 2.9, 3.6));
+  tf('popin', `translateY(${-scroll}px)`);
+  op('hDark', dk);
+  const sw = seg(t, S.sw + 1.25, S.sw + 1.7);
+  op('hPers', sw); op('hWork', 1);
+  // fresh highlight rings
+  const pulse = win(t, S.fresh + .3, S.sw - .1, .3) * (.6 + .4 * Math.sin((t - S.fresh) * 6));
+  op('rFresh', pulse); op('rTag', pulse);
+  // refresh spinner
+  const sp = seg(t, S.refresh + .75, S.refresh + 1.8);
+  op('spin', sp > 0 && sp < 1 ? 1 : 0); tf('spin', `rotate(${sp * 720}deg)`);
+
+  // panes fan in
+  [['p1', 0], ['p2', .12], ['p3', .24]].forEach(([id, d]) => {
+    const k = seg(t, S.panes + .3 + d, S.panes + .9 + d, out), o = seg(t, S.popout - .35, S.popout);
+    op(id, k * (1 - o)); tf(id, `translateY(${(1 - k) * 40}px) scale(.76)`);
+  });
+
+  // pop-out panel
+  const pk = seg(t, S.popout + .3, S.popout + .9, out), po = seg(t, S.float - .35, S.float);
+  op('popout', pk * (1 - po)); tf('popout', `translateY(${(1 - pk) * -30}px) scale(${lerp(.8, .9, pk)})`);
+  $('popout').querySelector('img').style.transform = `translateY(${-210 * seg(t, S.popout + 1.2, S.float - .3)}px)`;
+
+  // floating scene
+  const F = S.float, fin = win(t, F, S.end, .4);
+  op('desk', fin); tf('desk', `translateY(${(1 - seg(t, F, F + .5, out)) * 20}px)`);
+  op('fb', win(t, F + .3, S.end, .3)); tf('fb', `scale(${lerp(.6, 1, seg(t, F + .3, F + .7, out))})`);
+  const fresh = seg(t, F + .8, F + 1.1), anchored = seg(t, F + 3.3, F + 3.6);
+  op('bWork', fresh * (1 - anchored)); op('bPers', anchored); op('bCalm', 1 - fresh);
+  const g = fresh * (1 - anchored) * (.5 + .5 * Math.sin((t - F) * 5));
+  $('glow').style.boxShadow = `0 0 ${18 + 16 * g}px ${6 + 8 * g}px rgba(42,114,98,${.45 * fresh * (1 - anchored)})`;
+  const tipV = win(t, F + 1.3, F + 2.2, .2);
+  op('tip', tipV); $('tip').style.left = '700px'; $('tip').style.top = '548px';
+  const qk = seg(t, F + 2.25, F + 2.6, out);
+  op('quick', qk * (1 - seg(t, S.end - .4, S.end)));
+  $('quick').style.left = '762px'; $('quick').style.top = '160px';
+  tf('quick', `scale(${lerp(.9, 1, qk)})`);
+  op('qPers', seg(t, F + 3.25, F + 3.6));
+
+  // end card
+  const ek = seg(t, S.end, S.end + .6, out);
+  op('end', ek); tf('end', `translateY(${(1 - ek) * 16}px)`);
+
+  // cursor + click ripple
+  const [cx, cy] = cursorAt(t);
+  let press = 0, ripple = -1;
+  for (const c of clicks) { if (t >= c - .08 && t < c + .12) press = 1; if (t >= c && t < c + .45) ripple = (t - c) / .45; }
+  op('cursor', cursorShown(t)); tf('cursor', `translate(${cx - 3}px,${cy - 3}px) scale(${press ? .86 : 1})`);
+  op('click', ripple >= 0 ? (1 - ripple) * cursorShown(t) : 0);
+  tf('click', `translate(${cx}px,${cy}px) scale(${.4 + ripple * .9})`);
+};
+Promise.all([...document.images].map(i => i.decode().catch(() => {}))).then(() => { seek(0); window.READY = true; });
+</script></body></html>

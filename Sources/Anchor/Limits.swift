@@ -95,7 +95,7 @@ extension AppModel {
 
     /// Manual refresh: limits and usage rows. Fire-and-forget; ignored while one is running.
     func refreshNow() {
-        guard !isRefreshing else { return }
+        guard live, !isRefreshing else { return }   // snapshot models must never read real usage or call the API
         isRefreshing = true
         rescan()
         Task {
@@ -135,6 +135,9 @@ extension AppModel {
         accounts.filter { !$0.pending && $0.id != config.defaultID && limits[$0.id]?.isFresh == true }
     }
 
+    /// The default account itself has a full, unused 5h window (it just reset).
+    var activeIsFresh: Bool { active.map { isFresh($0.id) } ?? false }
+
     /// Short time until the 5h window resets ("22m", "1h 39m"), only once it is at least 75% used.
     func resetCountdown(_ id: String) -> String? {
         guard let w = limits[id]?.fiveHour, w.percent >= 75, let at = w.resetsAt else { return nil }
@@ -154,11 +157,12 @@ extension AppModel {
                 let wasFresh = before[a.id]?.isFresh == true || freshNotified.contains(a.id)
                 let seenBefore = before[a.id] != nil
                 freshNotified.insert(a.id)
-                guard !wasFresh, seenBefore, a.id != config.defaultID, config.notifyFresh,
+                guard !wasFresh, seenBefore, config.notifyFresh,
                       Bundle.main.bundleIdentifier != nil else { continue }
                 let c = UNMutableNotificationContent()
                 c.title = "Claude Anchor"
-                c.body = "\(a.name)'s 5-hour window reset. Full window available."
+                c.body = a.id == config.defaultID ? "\(a.name)'s 5-hour window reset. You're on a full window."
+                                                  : "\(a.name)'s 5-hour window reset. Full window available."
                 UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
             } else if l.error == nil, !l.stale {
                 freshNotified.remove(a.id)   // a failed fetch must not re-arm the notice

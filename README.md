@@ -2,15 +2,19 @@
 
 A macOS menu bar app that routes Claude Code to the right Claude account for each folder, shows rate limits and usage, and continues a conversation on another account.
 
-![Claude Anchor in 20 seconds](docs/brag-v0.3.gif)
+![Claude Anchor in 20 seconds](docs/tour.gif)
 
-*With sound: [download the video](docs/brag-v0.3.mp4). Still frame: [`docs/brag-v0.3.jpg`](docs/brag-v0.3.jpg).*
+*[Download the video](docs/tour.mp4). Still frame: [`docs/tour.jpg`](docs/tour.jpg).*
 
 | Menu | Accounts | Folder rules |
 |---|---|---|
-| ![Popover](docs/popover-light.png) | ![Accounts](docs/popover-accounts.png) | ![Folder rules](docs/popover-rules.png) |
+| ![Menu](docs/popover-light.png) | ![Accounts](docs/popover-accounts.png) | ![Folder rules](docs/popover-rules.png) |
 
-Dark mode, settings and first-run screens are in [`docs/`](docs/). These screenshots were taken before the 0.3 redesign. The tour above and the [user guide](docs/USER-GUIDE.md) show 0.3.
+| Settings | Floating button | Glance card |
+|---|---|---|
+| ![Settings](docs/popover-settings.png) | ![Floating button](docs/floating-button.png) | ![Glance card](docs/floating-card.png) |
+
+The screenshots are taken from the current build. Dark mode, six accounts, first-run and sign-in screens are also in [`docs/`](docs/).
 
 Unofficial and not affiliated with Anthropic. Free, MIT licensed, macOS 14+.
 
@@ -20,9 +24,9 @@ Unofficial and not affiliated with Anthropic. Free, MIT licensed, macOS 14+.
 - **Drop anchor.** Drag the anchor onto an account's berth, or click a berth, to make it the default. Works with one account or ten.
 - **Fresh resets.** An account whose 5-hour window has reset and is unused is marked fresh, with an optional notification.
 - **Refresh control.** A refresh button, an "Updated" time, and intervals from every 30 seconds to manual only.
-- **Pop-out window.** Move the full menu into its own resizable window, optionally kept on top.
-- **Floating button.** A draggable, always-on-top button with usage at a glance and a quick panel.
-- **Last conversation card.** Shows the conversation, the account it ran on, and one "Continue on <Name>" button.
+- **Pop-out window.** Move the full menu into a small floating panel that stays on top and doesn't take focus.
+- **Floating button.** A small round button, on by default, with usage at a glance. Click it for a glance card.
+- **Last conversation card.** Shows the conversation's folder, an account menu and one "Continue on <Name>" button.
 - **Folder rules** show a status line when their account is near its limit.
 
 The full list is in the [changelog](CHANGELOG.md). Task-by-task instructions are in the [user guide](docs/USER-GUIDE.md).
@@ -110,9 +114,17 @@ With a few accounts, every berth is roomy. With more, the berths get compact. Pa
 
 ### Folder rules and overflow
 
-Pin a folder, and its subfolders, to an account under **Rules**. The longest matching folder wins. Folders without a rule use the default. A rule shows a status line when its account is near its limit.
+Send a folder, and its subfolders, to an account under **Rules**. Each rule is a row in the Folders card: the folder, an account menu, an **Overflow** switch and a ⋯ menu. Click **Add folder**, or drop a folder onto that row. The **Default** card shows the account every other folder uses. The longest matching folder wins. A rule shows a status line when its account is near its limit.
+
+Overflow lets a folder use the default account when its own account is near its limit.
 
 When the active account nears its limit, the default moves to one with headroom. If an account is over its limit, the overflow goes to a fresh account first when one is available.
+
+### The menu
+
+The menu bar window is a fixed height and scrolls. From top to bottom: the header with the pop-out and refresh buttons, the harbor switcher, the fresh card when an account has a full 5-hour window, the default account's card with its 5-hour and weekly rings, the Usage card, and the Last conversation card. The bottom bar has **Accounts**, **Rules**, **Settings** and a Quit button.
+
+**Accounts**, **Rules** and **Settings** open as panes with a back button. In **Accounts**, the Signed in card lists every account, with **Add account** as the last row. Use an account's ⋯ menu to rename it, change its flag, or reorder it with **Move up** and **Move down**.
 
 ### Reading the rings
 
@@ -120,14 +132,14 @@ The rings show the 5-hour and weekly limits. Teal means fine, amber starts at 75
 
 ### Fresh resets
 
-An account is **fresh** when its 5-hour window has reset and nothing has been used in the new window. A fresh account gives you a full window for free. You'll see it in four places:
+An account is **fresh** when its 5-hour window has reset and nothing has been used in the new window. A fresh account gives you a full window for free. This applies to the account you're on as well as the others. You'll see it in these places:
 
 - a teal FRESH badge on its berth,
-- an "Anchor at <Name>" card in the popover,
-- a teal dot on the floating button,
+- in the menu, an "Anchor at <Name>" card when another account is fresh, or, when only the account you're on is fresh, a teal "<Name> has a full 5-hour window" card that says your limit just reset,
+- a teal glow and ↻ badge on the floating button,
 - a reset countdown on near-limit accounts, such as `92% · ↻ 22m`.
 
-The app can also send a notification, "<Name>'s 5-hour window reset. Full window available." Turn it off with the fresh-reset notification setting (`notifyFresh`).
+The app can also send a notification: "<Name>'s 5-hour window reset. Full window available." for another account, or "<Name>'s 5-hour window reset. You're on a full window." for the account you're on. Turn it off with the fresh-reset notification setting (`notifyFresh`).
 
 ### Refresh
 
@@ -137,22 +149,30 @@ Choose how often limits refresh in **Settings > Refresh limits**: Live (every 30
 
 ### Pop-out window
 
-Pop the full menu out of the menu bar into its own resizable window. Turn on the "keep on top" pin to keep it above other windows. Use the Dock action to return it to the menu bar. While the window is open, Claude Anchor also shows a Dock icon.
+Click the pop-out button in the header to move the full menu into a small floating panel. It stays above other windows, doesn't take focus from the app you're in, and adds no Dock icon. Close it to return to the menu bar.
 
 ### Floating button
 
-The floating button is a round button you can drag anywhere. It stays above other windows.
+The floating button is on by default. It is a 44 pt round button that starts at the bottom right of the screen. Drag it anywhere; it stays above other windows. Show or hide it in **Settings > Floating button**, or press ⌥⌘A.
 
 - The ring shows the 5-hour usage of the default account.
 - A flag badge marks the account.
-- A teal dot means an account is fresh.
+- A pulsing teal glow and ↻ badge mean the account you're on, or another account, has a full 5-hour window.
 - A red badge means usage is 90% or more.
 
-Click it for a quick panel with the limits, the fresh card, the harbor switcher and the continue card. Its settings are listed in the [settings reference](#settings-reference).
+Hover for a tooltip with the account and its usage (it adds "full 5h window" when the account you're on is fresh). Click it for a small glance card:
+
+- the harbor, to switch accounts,
+- the 5-hour and weekly bars,
+- "<Name> has a full 5-hour window" when the account you're on is fresh,
+- an **Anchor at <Name> · full 5h** button when another account has a fresh 5-hour window,
+- **Open full menu →**, which opens the menu bar menu, and a refresh button.
+
+Its settings are listed in the [settings reference](#settings-reference).
 
 ### Continue a conversation
 
-The **Last conversation** card replaces the old Continue on menu. It shows the conversation's folder, the account it ran on, the last prompt for context, and a short explanation. It lists the other accounts, fresh ones first. Click **Continue on <Name>** to copy the transcript to that account and resume it in Terminal. A confirmation appears when it is done.
+The **Last conversation** card replaces the old Continue on menu. It shows the conversation's folder and one account menu, with fresh accounts first. Pick an account and click **Continue on <Name>**. The app copies the transcript to that account and resumes it in a new Terminal tab. A confirmation appears when it is done.
 
 A running session keeps its account. Continuing starts a new process under the other account.
 
@@ -166,17 +186,17 @@ Bypass the shell function with `CLAUDE_ANCHOR_OFF=1` or by exporting `CLAUDE_CON
 
 ## Settings reference
 
-Settings are in the app's **Settings** tab and are stored in `~/.claude-anchor/config.json`. Every key is optional, and older files still load without them.
+Settings are in the app's **Settings** pane, in three cards: General, Limits and Floating button. They are stored in `~/.claude-anchor/config.json`. Every key is optional, and older files still load without them.
 
 | Setting | Config key | Default | What it does |
 |---|---|---|---|
 | Refresh limits | `refreshSeconds` | 5 min | How often limits refresh: 30 s (Live), 1 min, 5 min, 15 min, or Manual only. `0` means manual. |
-| Fresh-reset notification | `notifyFresh` | On | Send a notification when an account's 5-hour window resets and is fresh. |
-| Floating button | `floatingButton` | Off | Show or hide the floating button. |
+| Fresh-reset notification | `notifyFresh` | On | Send a notification when an account's 5-hour window resets and is fresh, including the account you're on. |
+| Floating button | `floatingButton` | On | Show or hide the floating button. |
 | Snap to screen edges | `floatingSnap` | On | Snap the floating button to the screen edges. |
-| Fade when idle | `floatingFade` | On | Fade the floating button when it is idle. |
+| Fade when idle | `floatingFade` | Off | Fade the floating button when it is idle. |
 | Show on every Space | `floatingAllSpaces` | On | Keep the floating button visible on every Space. |
-| Floating button position | `floatingX`, `floatingY` | Right edge, mid-height | Where the floating button sits. Set by dragging it, and remembered. |
+| Floating button position | `floatingX`, `floatingY` | Bottom right | Where the floating button sits. Set by dragging it, and remembered. |
 
 The VS Code and Cursor switch is described under [Editors, history and checking accounts](#editors-history-and-checking-accounts).
 
@@ -223,7 +243,9 @@ Ideas and pull requests are welcome in [Issues](https://github.com/SumithSB/clau
 ## Acknowledgements
 
 - [claude-swap](https://github.com/realiti4/claude-swap) by realiti4, the account switcher that inspired this project. Claude Anchor takes a different approach (one config folder per account instead of swapping credentials), but the idea started there.
-- [brag](https://github.com/latent-spaces/brag) by Latent Spaces, used to make the launch video above.
+- [brag](https://github.com/latent-spaces/brag) by Latent Spaces, used to make an earlier launch video.
+
+The tour above is rendered from real app snapshots with a small HTML composition in [`docs/video-src`](docs/video-src).
 
 ## License
 

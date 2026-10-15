@@ -24,6 +24,10 @@ private func resetText(_ d: Date?) -> String {
 struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
 extension EnvironmentValues { var snapshotMode: Bool { get { self[SnapshotKey.self] } set { self[SnapshotKey.self] = newValue } } }
 
+/// Back action for the pane header.
+struct PaneBackKey: EnvironmentKey { static let defaultValue: @MainActor () -> Void = {} }
+extension EnvironmentValues { var paneBack: @MainActor () -> Void { get { self[PaneBackKey.self] } set { self[PaneBackKey.self] = newValue } } }
+
 /// True when the popover content is hosted in the resizable standalone window.
 struct PopoutKey: EnvironmentKey { static let defaultValue = false }
 extension EnvironmentValues { var isPopout: Bool { get { self[PopoutKey.self] } set { self[PopoutKey.self] = newValue } } }
@@ -66,7 +70,7 @@ private struct HoverHighlight: ViewModifier {
 private extension View { func hoverHighlight() -> some View { modifier(HoverHighlight()) } }
 
 /// Filled pill button used for primary actions.
-private struct ClayButtonStyle: ButtonStyle {
+struct ClayButtonStyle: ButtonStyle {
     var fill: Color = Clay.accentFill
     var ink: Color = Clay.accentInk
     func makeBody(configuration: Configuration) -> some View {
@@ -139,7 +143,7 @@ private struct IconButton: View {
 }
 
 /// Refresh button: spins while a refresh is in flight and is disabled meanwhile.
-private struct RefreshButton: View {
+struct RefreshButton: View {
     let busy: Bool
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -188,7 +192,7 @@ private struct RefreshButton: View {
 }
 
 private struct NavButton: View {
-    let title: String
+    let title: String?
     let symbol: String
     let label: String
     let action: () -> Void
@@ -196,7 +200,7 @@ private struct NavButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: symbol).font(.system(size: 12)).accessibilityHidden(true)
-                Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                if let title { Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1).fixedSize() }
             }
             .foregroundStyle(Color.primary.opacity(0.8))
             .frame(maxWidth: .infinity).frame(height: 32)
@@ -209,6 +213,25 @@ private struct NavButton: View {
 
 // MARK: popover
 
+/// Rounds the menu bar window to the card radius; the stock MenuBarExtra window has near-square corners.
+private struct RoundedWindow: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ v: NSView, context: Context) {}
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let w = window, let frame = w.contentView?.superview ?? w.contentView else { return }
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            frame.wantsLayer = true
+            frame.layer?.cornerRadius = 16
+            frame.layer?.cornerCurve = .continuous
+            frame.layer?.masksToBounds = true
+            w.invalidateShadow()
+        }
+    }
+}
+
 @MainActor struct PopoverView: View {
     @State private var path: [Pane]
     let popout: Bool
@@ -217,17 +240,19 @@ private struct NavButton: View {
         self.popout = popout
     }
     var body: some View {
-        NavigationStack(path: $path) {
-            PopoverHome(path: $path)
-                .navigationDestination(for: Pane.self) { p in
-                    switch p {
-                    case .accounts: AccountsPane()
-                    case .rules: RulesPane()
-                    case .settings: SettingsPane()
-                    }
-                }
+        // A plain switch, not NavigationStack: the stack keeps Home in the layout, so the menu window
+        // stayed Home-sized behind every pane.
+        Group {
+            switch path.last {
+            case .accounts: AccountsPane()
+            case .rules: RulesPane()
+            case .settings: SettingsPane()
+            case nil: PopoverHome(path: $path)
+            }
         }
+        .environment(\.paneBack, { if !path.isEmpty { path.removeLast() } })
         .environment(\.isPopout, popout)
+        .background { if !popout { RoundedWindow() } }
         .frame(width: popout ? nil : 340)
         .frame(minWidth: popout ? 340 : nil, maxWidth: popout ? CGFloat.infinity : nil, maxHeight: popout ? CGFloat.infinity : nil)
         .background(Clay.paper)
@@ -237,12 +262,16 @@ private struct NavButton: View {
 @MainActor struct PopoverHome: View {
     @Environment(AppModel.self) private var model
     @Environment(\.isPopout) private var popout
+    @Environment(\.snapshotMode) private var snapshot
     @Binding var path: [Pane]
     @State private var showAllRows = false
 
     var body: some View {
         Group {
-            if popout { ScrollView { content } } else { content }
+            if snapshot { content } else if popout { ScrollView { content }.scrollIndicators(.never) } else {
+                // Same fixed height as the panes, so the menu window never changes size.
+                ScrollView { content }.scrollIndicators(.never).frame(height: 640)
+            }
         }
         .onAppear { model.refreshEnvironment(); model.refreshIfStale() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
@@ -262,10 +291,9 @@ private struct NavButton: View {
                 emptyState("Add an account to start", "Each account keeps its own limits and usage.", "Add account") { path.append(.accounts) }
                 alertCard
             } else {
-                HarborView(width: 340).frame(maxWidth: .infinity).padding(.horizontal, -gutter)
+                HarborView(width: 340 - 2 * gutter).frame(maxWidth: .infinity)
                 if model.banner != nil { alertCard } else { FreshCard() }
-                accountCard
-                usageCard
+                if popout { usageCard; accountCard } else { accountCard; usageCard }
                 ContinueCard()
             }
             nav
@@ -308,7 +336,6 @@ private struct NavButton: View {
             } else {
                 IconButton(symbol: "arrow.up.forward.app", label: "Pop out into a window") { PopoutController.shared.show(model) }
             }
-            IconButton(symbol: "circle.dashed", label: "Toggle floating button") { FloatingController.shared.toggle(model) }
             RefreshButton(busy: model.isRefreshing) { model.refreshNow() }
         }
         .frame(minHeight: 34)
@@ -507,8 +534,8 @@ private struct NavButton: View {
             NavButton(title: "Accounts", symbol: "person.2", label: "Accounts") { path.append(.accounts) }
             NavButton(title: "Rules", symbol: "folder", label: "Folder rules") { path.append(.rules) }
             NavButton(title: "Settings", symbol: "gearshape", label: "Settings") { path.append(.settings) }
-            NavButton(title: "Quit", symbol: "power", label: "Quit Claude Anchor") { NSApplication.shared.terminate(nil) }
-                .keyboardShortcut("q")
+            NavButton(title: nil, symbol: "power", label: "Quit Claude Anchor") { NSApplication.shared.terminate(nil) }
+                .keyboardShortcut("q").frame(width: 36).help("Quit Claude Anchor")
         }
         .padding(.top, 8)
         .overlay(alignment: .top) { Rectangle().fill(Clay.hairline).frame(height: 1) }
@@ -524,22 +551,22 @@ private struct Ring: View {
     var body: some View {
         let p = min(100, max(0, window?.percent ?? 0))
         let reset = resetText(window?.resetsAt) + (stale ? " (cached)" : "")
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ZStack {
-                Circle().stroke(Color.primary.opacity(0.12), lineWidth: 9)
+                Circle().stroke(Color.primary.opacity(0.12), lineWidth: 7)
                 if p > 0 {
                     Circle().trim(from: 0, to: CGFloat(p / 100))
-                        .stroke(Clay.gradient(p), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                        .stroke(Clay.gradient(p), style: StrokeStyle(lineWidth: 7, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .animation(reduceMotion ? nil : Animation.easeOut(duration: 0.5), value: p)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("\(Int(p.rounded()))").font(.system(size: 30, weight: .light)).monospacedDigit()
+                    Text("\(Int(p.rounded()))").font(.system(size: 22, weight: .light)).monospacedDigit()
                         .foregroundStyle(p >= 90 ? Clay.limit : Color.primary)
-                    Text("%").font(.system(size: 14, weight: .light)).foregroundStyle(.secondary)
+                    Text("%").font(.system(size: 11, weight: .light)).foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 112, height: 112)
+            .frame(width: 76, height: 76)
             VStack(spacing: 2) {
                 Text(title).font(.system(size: 12.5, weight: .medium))
                 Text(reset).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
@@ -562,7 +589,17 @@ private struct Ring: View {
 
     var body: some View {
         let fresh = model.freshAccounts
-        if !fresh.isEmpty {
+        if fresh.isEmpty, model.activeIsFresh, let a = model.active {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(Clay.fresh).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(a.name) has a full 5-hour window").font(.system(size: 13, weight: .semibold))
+                    Text("Your limit just reset. You're good to go.").font(.system(size: 11.5)).foregroundStyle(.secondary)
+                }
+            }
+            .card(compact ? 10 : 12, fill: Clay.fresh.opacity(0.10), stroke: Clay.fresh.opacity(0.30))
+            .accessibilityElement(children: .combine)
+        } else if !fresh.isEmpty {
             let title = fresh.count == 1 ? "\(fresh[0].name) has a full 5-hour window" : "\(fresh.count) accounts have a full 5-hour window"
             VStack(alignment: .leading, spacing: compact ? 6 : 8) {
                 HStack(alignment: .top, spacing: 8) {
@@ -601,7 +638,6 @@ private struct Ring: View {
     @Environment(AppModel.self) private var model
     @State private var picked: String?
     @State private var doneID: String?
-    @State private var showAll = false
     init(compact: Bool = false) { self.compact = compact }
 
     var body: some View {
@@ -611,7 +647,6 @@ private struct Ring: View {
     private func content(_ s: (cwd: String, accountID: String, file: String?)) -> some View {
         let src = model.account(s.accountID)
         let targets = model.continueTargets.filter { $0.id != s.accountID }
-        let shown = showAll ? targets : Array(targets.prefix(3))
         let sel = targets.first { $0.id == picked } ?? targets.first
         return VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             Caption("Last conversation")
@@ -632,21 +667,10 @@ private struct Ring: View {
                 Text("Add a second account to continue a conversation there when this one runs out.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else if let sel {
-                Text("Continue this same conversation on another account. Claude keeps the full history, so you pick up right where you stopped.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                VStack(spacing: 4) {
-                    ForEach(shown) { t in radio(t, on: t.id == sel.id) }
-                    if targets.count > 3 {
-                        Button { showAll.toggle() } label: {
-                            Text(showAll ? "Show fewer" : "Show all \(targets.count) accounts").font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Clay.accentText).frame(maxWidth: .infinity).frame(height: 24).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(showAll ? "Show fewer accounts" : "Show all \(targets.count) accounts")
-                    }
+                Picker("Continue on", selection: Binding(get: { sel.id }, set: { picked = $0 })) {
+                    ForEach(targets) { t in Text(tag(t).isEmpty ? t.name : "\(t.name) · \(tag(t))").tag(t.id) }
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Account to continue on")
+                .pickerStyle(.menu).labelsHidden().frame(maxWidth: .infinity)
                 Button {
                     model.continueSession(on: sel.id)
                     if model.banner == nil { doneID = sel.id }
@@ -661,38 +685,17 @@ private struct Ring: View {
                 }
                 .buttonStyle(ClayButtonStyle())
                 .disabled(s.file == nil)
+                .help("Opens in a new Terminal tab with the full history.")
                 .accessibilityLabel("Continue on \(sel.name)")
-                Text("Opens a new Terminal tab with the same conversation.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
             }
         }
         .card(compact ? 10 : 14)
         .accessibilityElement(children: .contain)
     }
 
-    private func radio(_ t: Account, on: Bool) -> some View {
-        let fresh = model.isFresh(t.id)
-        let pct = model.limits[t.id]?.fiveHour?.percent
-        let tag: String = fresh ? "Fresh · full 5h" : (pct.map { "\(Int($0.rounded()))% used" } ?? "")
-        let tagColor: Color = fresh ? Clay.fresh : Clay.color(pct ?? 0)
-        return Button { picked = t.id } label: {
-            HStack(spacing: 8) {
-                Circle().strokeBorder(on ? Clay.accent : Color.primary.opacity(0.3), lineWidth: on ? 4.5 : 1.5)
-                    .frame(width: 14, height: 14)
-                FlagView(flag: t.flag, size: 11)
-                Text(t.name).font(.system(size: 12.5)).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 6)
-                if !tag.isEmpty { Text(tag).font(.system(size: 11, weight: .medium)).foregroundStyle(tagColor).lineLimit(1).fixedSize() }
-            }
-            .padding(.horizontal, 8).frame(minHeight: 30)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? Clay.accent.opacity(0.08) : Color.clear))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(on ? Clay.accent.opacity(0.6) : Clay.hairline, lineWidth: 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(t.name)
-        .accessibilityValue(tag)
-        .accessibilityAddTraits(on ? .isSelected : [])
+    private func tag(_ t: Account) -> String {
+        if model.isFresh(t.id) { return "Fresh" }
+        return model.limits[t.id]?.fiveHour.map { "\(Int($0.percent.rounded()))% used" } ?? ""
     }
 
     private func doneRow(_ t: Account, src: Account?) -> some View {
@@ -716,39 +719,33 @@ private struct Ring: View {
 
 @MainActor struct PaneHeader: View {
     let title: String
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.paneBack) private var back
     var body: some View {
-        HStack(spacing: 6) {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold)).frame(width: 24, height: 24).contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless).keyboardShortcut(.cancelAction).help("Back").accessibilityLabel("Back")
-            Text(title).font(.system(size: 15, weight: .semibold)).accessibilityAddTraits(.isHeader)
+        HStack(spacing: 10) {
+            IconButton(symbol: "chevron.left", label: "Back") { back() }.keyboardShortcut(.cancelAction)
+            Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1).accessibilityAddTraits(.isHeader)
             Spacer()
-        }.padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 2)
+        }
+        .frame(minHeight: 34)
+        .padding(.horizontal, gutter).padding(.top, 14).padding(.bottom, 4)
     }
 }
 
 /// Header + System Settings style grouped form (or, with `scroll`, a stack of cards) over the paper background.
 @MainActor struct PaneScaffold<Content: View>: View {
     let title: String
-    let height: CGFloat
-    var scroll = false
     @ViewBuilder var content: Content
     @Environment(\.isPopout) private var popout
     var body: some View {
         VStack(spacing: 0) {
             PaneHeader(title: title)
-            if scroll {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) { content }
-                        .padding(.horizontal, gutter).padding(.top, 8).padding(.bottom, 16)
-                }
-            } else {
-                Form { content }.formStyle(.grouped).scrollContentBackground(.hidden)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) { content }
+                    .padding(.horizontal, gutter).padding(.top, 8).padding(.bottom, 16)
             }
+            .scrollIndicators(.never)
         }
-        .frame(width: popout ? nil : 340, height: popout ? nil : height)
+        .frame(width: popout ? nil : 340, height: popout ? nil : 640, alignment: .top)
         .frame(maxWidth: popout ? CGFloat.infinity : nil, maxHeight: popout ? CGFloat.infinity : nil)
         .background(Clay.paper)
     }
@@ -764,6 +761,52 @@ private struct Ring: View {
     }
 }
 
+/// A pane section in the Home card style: optional caption, a card of rows split by `RowDivider`, optional footnote.
+struct PaneSection<Content: View>: View {
+    var title: String?
+    var footer: String?
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title { Caption(title).padding(.horizontal, 4) }
+            VStack(spacing: 0) { content }
+                .padding(.horizontal, 14).padding(.vertical, 2)
+                .card(0)
+            if let footer {
+                Text(footer).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4)
+            }
+        }
+    }
+}
+
+struct RowDivider: View {
+    var body: some View { Rectangle().fill(Clay.hairline).frame(height: 1) }
+}
+
+/// Title on the left, control on the right.
+struct PaneRow<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 13))
+            Spacer(minLength: 8)
+            trailing
+        }
+        .frame(minHeight: 40)
+    }
+}
+
+struct SwitchRow: View {
+    let title: String
+    let isOn: Binding<Bool>
+    init(_ title: String, isOn: Binding<Bool>) { self.title = title; self.isOn = isOn }
+    var body: some View {
+        PaneRow(title: title) { Toggle(title, isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small) }
+    }
+}
+
 // MARK: settings
 
 @MainActor struct SettingsPane: View {
@@ -775,19 +818,22 @@ private struct Ring: View {
     }
 
     var body: some View {
-        PaneScaffold(title: "Settings", height: 640) {
-            Group {
-                Section {
-                    Toggle("Launch at login", isOn: Binding(get: { loginOn }, set: { on in
-                        do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
-                        catch { model.banner = "Couldn't change Launch at login: \(AppModel.reason(error)). Run Claude Anchor from the Applications folder and try again." }
-                        loginOn = SMAppService.mainApp.status == .enabled
-                    }))
-                    Toggle("Bell sound", isOn: Binding(get: { model.config.bell }, set: { model.config.bell = $0; model.save() }))
-                    Toggle("Auto-switch near limit", isOn: Binding(get: { model.config.autoOverflow }, set: { model.config.autoOverflow = $0; model.save() }))
-                    Toggle("Use in VS Code and Cursor", isOn: Binding(get: { model.config.editorIntegration ?? false }, set: { model.banner = model.setEditorIntegration($0) }))
-                }
-                Section {
+        PaneScaffold(title: "Settings") {
+            PaneSection(title: "General") {
+                SwitchRow("Launch at login", isOn: Binding(get: { loginOn }, set: { on in
+                    do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+                    catch { model.banner = "Couldn't change Launch at login: \(AppModel.reason(error)). Run Claude Anchor from the Applications folder and try again." }
+                    loginOn = SMAppService.mainApp.status == .enabled
+                }))
+                RowDivider()
+                SwitchRow("Bell sound", isOn: Binding(get: { model.config.bell }, set: { model.config.bell = $0; model.save() }))
+                RowDivider()
+                SwitchRow("Auto-switch near limit", isOn: Binding(get: { model.config.autoOverflow }, set: { model.config.autoOverflow = $0; model.save() }))
+                RowDivider()
+                SwitchRow("Use in VS Code and Cursor", isOn: Binding(get: { model.config.editorIntegration ?? false }, set: { model.banner = model.setEditorIntegration($0) }))
+            }
+            PaneSection(title: "Limits", footer: "Live uses more of Anthropic's API. Use Refresh in the header any time.") {
+                PaneRow(title: "Refresh limits") {
                     Picker("Refresh limits", selection: Binding(get: { model.config.refreshSeconds }, set: { model.setRefreshSeconds($0) })) {
                         Text("Live every 30 s").tag(30)
                         Text("Every 1 min").tag(60)
@@ -795,29 +841,27 @@ private struct Ring: View {
                         Text("Every 15 min").tag(900)
                         Text("Manual only").tag(0)
                     }
-                    .accessibilityLabel("Refresh limits")
-                    Toggle("Notify when a window resets", isOn: Binding(get: { model.config.notifyFresh }, set: { model.config.notifyFresh = $0; model.save() }))
-                } footer: {
-                    Text("Live uses more of Anthropic's API. Use Refresh in the header any time.")
-                        .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .labelsHidden().fixedSize().controlSize(.small)
                 }
-                Section("Floating button") {
-                    Toggle(isOn: floating({ model.config.floatingButton }, { model.config.floatingButton = $0 })) {
-                        HStack(spacing: 6) {
-                            Text("Show floating button")
-                            Spacer(minLength: 4)
-                            Text("⌥⌘A").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
-                                .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Clay.surface2))
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    Toggle("Snap to screen edges", isOn: floating({ model.config.floatingSnap }, { model.config.floatingSnap = $0 }))
-                    Toggle("Fade when idle", isOn: floating({ model.config.floatingFade }, { model.config.floatingFade = $0 }))
-                    Toggle("Show on every Space", isOn: floating({ model.config.floatingAllSpaces }, { model.config.floatingAllSpaces = $0 }))
-                }
+                RowDivider()
+                SwitchRow("Notify when a window resets", isOn: Binding(get: { model.config.notifyFresh }, set: { model.config.notifyFresh = $0; model.save() }))
             }
-            .toggleStyle(.switch).controlSize(.small)
+            PaneSection(title: "Floating button") {
+                PaneRow(title: "Show floating button") {
+                    Text("⌥⌘A").font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Clay.surface2))
+                        .accessibilityHidden(true)
+                    Toggle("Show floating button", isOn: floating({ model.config.floatingButton }, { model.config.floatingButton = $0 }))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                }
+                RowDivider()
+                SwitchRow("Snap to screen edges", isOn: floating({ model.config.floatingSnap }, { model.config.floatingSnap = $0 }))
+                RowDivider()
+                SwitchRow("Fade when idle", isOn: floating({ model.config.floatingFade }, { model.config.floatingFade = $0 }))
+                RowDivider()
+                SwitchRow("Show on every Space", isOn: floating({ model.config.floatingAllSpaces }, { model.config.floatingAllSpaces = $0 }))
+            }
         }
     }
 }
@@ -828,52 +872,40 @@ private struct Ring: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        PaneScaffold(title: "Folder rules", height: 520, scroll: true) {
-            Text("New Claude sessions in a folder, in Terminal or VS Code, use its account. Overflow lets a folder use the default account when its own is near its limit.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            dropZone
-            if !model.config.rules.isEmpty {
-                let n = model.config.rules.count
-                Caption("\(n) \(n == 1 ? "rule" : "rules")")
-            }
-            ForEach(model.config.rules) { ruleCard($0) }
-            if let d = model.active {
-                HStack(spacing: 6) {
-                    Text("Every other folder uses").foregroundStyle(.secondary)
-                    FlagView(flag: d.flag, size: 11)
-                    Text(d.name).fontWeight(.medium).lineLimit(1).truncationMode(.tail)
+        PaneScaffold(title: "Folder rules") {
+            PaneSection(title: "Folders", footer: "New Claude sessions in a folder, in Terminal or VS Code, use its account. Overflow lets a folder use the default account when its own is near its limit.") {
+                ForEach(Array(model.config.rules.enumerated()), id: \.element.id) { i, r in
+                    if i > 0 { RowDivider() }
+                    ruleRow(r)
                 }
-                .font(.system(size: 12))
-                .accessibilityElement(children: .combine)
+                if !model.config.rules.isEmpty { RowDivider() }
+                Button { addFolder() } label: {
+                    Label("Add folder", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
+                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Choose a folder, or drop one here")
+                .dropDestination(for: URL.self) { urls, _ in addDropped(urls) }
+            }
+            if let d = model.active {
+                PaneSection(title: "Default") {
+                    PaneRow(title: "Every other folder") {
+                        FlagView(flag: d.flag, size: 11)
+                        Text(d.name).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.tail)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
         }
     }
 
-    private var dropZone: some View {
-        Button { addFolder() } label: {
-            VStack(spacing: 3) {
-                Image(systemName: "folder.badge.plus").font(.system(size: 18)).foregroundStyle(Clay.accentText).accessibilityHidden(true)
-                Text("Add folder").font(.system(size: 12.5, weight: .semibold))
-                Text(model.config.rules.isEmpty ? "No folder rules yet. Choose or drop a folder to pin it to an account." : "Choose a folder, or drop one here")
-                    .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 14).padding(.horizontal, 10)
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add folder")
-        .dropDestination(for: URL.self) { urls, _ in addDropped(urls) }
-    }
-
-    private func ruleCard(_ rule: Rule) -> some View {
+    private func ruleRow(_ rule: Rule) -> some View {
         let acct = model.account(rule.accountID)
         let pct = model.limits[rule.accountID]?.fiveHour?.percent ?? 0
         let near = pct >= model.config.overflowThreshold && model.limits[rule.accountID]?.error == nil
         let fallback = model.active
         let usesFallback = rule.allowOverflow && fallback != nil && fallback?.id != rule.accountID
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "folder").font(.system(size: 12)).foregroundStyle(.secondary).accessibilityHidden(true)
                 Text(abbreviate(rule.path)).font(.system(size: 12.5, weight: .semibold)).lineLimit(1).truncationMode(.middle)
@@ -916,7 +948,7 @@ private struct Ring: View {
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint.opacity(0.10)))
             }
         }
-        .card(12, radius: 14)
+        .padding(.vertical, 10)
     }
 
     private func addDropped(_ urls: [URL]) -> Bool {

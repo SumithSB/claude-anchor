@@ -38,6 +38,14 @@ Text must meet 4.5:1 against its background. The ratios below were checked again
 - **Increase Contrast is supported**, as it was in 0.1.
 - **Long names truncate** instead of wrapping, so rows stay the same height.
 
+## Menu and panes
+
+- **Menu bar window:** 340 pt wide and a fixed 640 pt tall. The content scrolls, with the scroll bars hidden, so the window never jumps in size as cards come and go.
+- **Header:** two icon buttons, pop-out and refresh. The floating button is toggled from Settings or with ⌥⌘A, not from the header.
+- **Bottom bar:** Accounts, Rules and Settings with labels, and Quit as an icon only.
+- **Panes:** Settings, Accounts and Folder rules share one style. A rounded back button and the title sit at the top. Rows are grouped in rounded cards under an uppercase caption, separated by hairlines, with a footnote below when one is needed. Account and rule actions sit in a ⋯ menu on each row; the last row of a card adds an item (Add account, Add folder).
+- **Pop-out:** the same content in a small floating panel that stays on top, doesn't take focus and adds no Dock icon.
+
 ## Harbor switcher layout
 
 The harbor switcher shows accounts as berths on a chain. The anchor sits on the chain and marks the default account.
@@ -54,21 +62,21 @@ Layout rules:
 
 ## Floating button
 
-The floating button is a round, draggable, always-on-top control.
+The floating button is a 44 pt round, draggable, always-on-top control. It is on by default and starts at the bottom right of the screen.
 
 States:
 
 | State | Appearance |
 |---|---|
 | Default | Ring shows the 5-hour usage of the default account, in teal, amber or red by threshold. |
-| Fresh | Teal dot on the button when any account is fresh. |
+| Fresh | Pulsing teal glow and a ↻ badge when the account you're on, or another account, has a full 5-hour window. |
 | Over limit | Red badge when usage is 90% or more. |
-| Idle | Fades when idle, if fade is on. |
+| Idle | Fades after a few idle seconds, if fade is on. Fade is off by default. |
 | Snapped | Sits against a screen edge when snap is on. |
-| Hidden | Not shown when the floating button setting is off. |
+| Hidden | Not shown when the floating button setting is off. ⌥⌘A toggles it. |
 
-Clicking the button opens a quick panel with the limits, the fresh card, the harbor switcher and the continue card. The position is stored as `floatingX` and `floatingY` in `config.json`. Show on every Space is controlled by `floatingAllSpaces`.
+Clicking the button opens a glance card: the harbor switcher, the 5-hour and weekly bars, a "<Name> has a full 5-hour window" line when the account you're on is fresh, an "Anchor at <Name> · full 5h" button when another account is fresh, "Open full menu →" and a refresh button. The position is stored as `floatingX` and `floatingY` in `config.json`. Show on every Space is controlled by `floatingAllSpaces`.
 
 ## Motion
 
-Motion is limited to feedback: the refresh button spins while refreshing, the anchor sails to a selected berth, and the floating button fades when idle. Reduced motion is respected throughout.
+Motion is limited to feedback: the refresh button spins while refreshing, the anchor sails to a selected berth, the floating button glows while an account is fresh, and it fades when idle if that setting is on. Reduced motion is respected throughout.

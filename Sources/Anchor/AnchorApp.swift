@@ -99,9 +99,9 @@ extension AppModel {
             shoot(hot, dark: dark, to: prefix + "-floating-hot\(d).png", view: AnyView(FloatingButtonView()), width: 72, height: 72, clear: true)
             shoot(fresh, dark: dark, to: prefix + "-floating-fresh\(d).png", view: AnyView(FloatingButtonView()), width: 72, height: 72, clear: true)
             shoot(fresh, dark: dark, to: prefix + "-floating-tip\(d).png", view: AnyView(FloatingTooltipView()), clear: true)
-            shoot(fresh, dark: dark, to: prefix + "-quick\(d).png", view: AnyView(QuickPanelView().background(Clay.paper).clipShape(RoundedRectangle(cornerRadius: 20))), width: 300, clear: true)
+            shoot(fresh, dark: dark, to: prefix + "-quick\(d).png", view: AnyView(QuickPanelView().background(Clay.paper).clipShape(RoundedRectangle(cornerRadius: 16))), width: 280, clear: true)
         }
-        shoot(hot, dark: false, to: prefix + "-quick-hot.png", view: AnyView(QuickPanelView().background(Clay.paper).clipShape(RoundedRectangle(cornerRadius: 20))), width: 300, clear: true)
+        shoot(hot, dark: false, to: prefix + "-quick-hot.png", view: AnyView(QuickPanelView().background(Clay.paper).clipShape(RoundedRectangle(cornerRadius: 16))), width: 280, clear: true)
     }
 
     static func shoot(_ model: AppModel, dark: Bool, to path: String, view: AnyView? = nil,

@@ -52,9 +52,9 @@ struct Config: Codable {
     var removedNames: [String: String] = [:]  // accountID -> name, for usage history of removed accounts
     var refreshSeconds: Int = 300             // limits refresh interval; 0 = manual only
     var notifyFresh: Bool = true              // notify when another account's 5h window resets and is unused
-    var floatingButton: Bool = false          // draggable always-on-top button
+    var floatingButton: Bool = true          // draggable always-on-top button
     var floatingSnap: Bool = true             // settle against the nearest screen edge after a drag
-    var floatingFade: Bool = true             // dim after a few idle seconds
+    var floatingFade: Bool = false            // dim after a few idle seconds
     var floatingAllSpaces: Bool = true        // show on every Space and over full-screen apps
     var floatingX: Double?                    // last position, screen points (bottom-left origin)
     var floatingY: Double?
@@ -74,9 +74,9 @@ extension Config {
         removedNames = try c.decodeIfPresent([String: String].self, forKey: .removedNames) ?? [:]
         refreshSeconds = try c.decodeIfPresent(Int.self, forKey: .refreshSeconds) ?? 300
         notifyFresh = try c.decodeIfPresent(Bool.self, forKey: .notifyFresh) ?? true
-        floatingButton = try c.decodeIfPresent(Bool.self, forKey: .floatingButton) ?? false
+        floatingButton = try c.decodeIfPresent(Bool.self, forKey: .floatingButton) ?? true
         floatingSnap = try c.decodeIfPresent(Bool.self, forKey: .floatingSnap) ?? true
-        floatingFade = try c.decodeIfPresent(Bool.self, forKey: .floatingFade) ?? true
+        floatingFade = try c.decodeIfPresent(Bool.self, forKey: .floatingFade) ?? false
         floatingAllSpaces = try c.decodeIfPresent(Bool.self, forKey: .floatingAllSpaces) ?? true
         floatingX = try c.decodeIfPresent(Double.self, forKey: .floatingX)
         floatingY = try c.decodeIfPresent(Double.self, forKey: .floatingY)

@@ -13,7 +13,7 @@ const only = process.argv[5] ? process.argv[5].split(',').map(Number) : null;
 fs.mkdirSync(out, { recursive: true });
 
 (async () => {
-  const browser = await pw.chromium.launch({ args: ['--force-device-scale-factor=1', '--font-render-hinting=none'] });
+  const browser = await pw.chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--force-device-scale-factor=1', '--font-render-hinting=none'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
   page.on('pageerror', e => console.error('PAGEERROR', e.message)); page.on('console', m => { if (m.type()==='error') console.error('CONSOLE', m.text()); });
   await page.goto('file://' + path.resolve(__dirname, 'index.html'));
