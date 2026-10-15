@@ -168,15 +168,15 @@ Bypass the shell function with `CLAUDE_ANCHOR_OFF=1` or by exporting `CLAUDE_CON
 
 Settings are in the app's **Settings** tab and are stored in `~/.claude-anchor/config.json`. Every key is optional, and older files still load without them.
 
-| Setting | Config key | What it does |
-|---|---|---|
-| Refresh limits | `refreshSeconds` | How often limits refresh: 30 s (Live), 1 min, 5 min (default), 15 min, or Manual only. `0` means manual. |
-| Fresh-reset notification | `notifyFresh` | Send a notification when an account's 5-hour window resets and is fresh. |
-| Floating button | `floatingButton` | Show or hide the floating button. |
-| Snap to screen edges | `floatingSnap` | Snap the floating button to the screen edges. |
-| Fade when idle | `floatingFade` | Fade the floating button when it is idle. |
-| Show on every Space | `floatingAllSpaces` | Keep the floating button visible on every Space. |
-| Floating button position | `floatingX`, `floatingY` | Where the floating button sits. Set by dragging it, and remembered. |
+| Setting | Config key | Default | What it does |
+|---|---|---|---|
+| Refresh limits | `refreshSeconds` | 5 min | How often limits refresh: 30 s (Live), 1 min, 5 min, 15 min, or Manual only. `0` means manual. |
+| Fresh-reset notification | `notifyFresh` | On | Send a notification when an account's 5-hour window resets and is fresh. |
+| Floating button | `floatingButton` | Off | Show or hide the floating button. |
+| Snap to screen edges | `floatingSnap` | On | Snap the floating button to the screen edges. |
+| Fade when idle | `floatingFade` | On | Fade the floating button when it is idle. |
+| Show on every Space | `floatingAllSpaces` | On | Keep the floating button visible on every Space. |
+| Floating button position | `floatingX`, `floatingY` | Right edge, mid-height | Where the floating button sits. Set by dragging it, and remembered. |
 
 The VS Code and Cursor switch is described under [Editors, history and checking accounts](#editors-history-and-checking-accounts).
 

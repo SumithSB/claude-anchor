@@ -12,10 +12,10 @@ Colours are defined as tokens. Light and dark values are listed below.
 | surface | `#FFFFFF` | `#272624` | cards and grouped rows |
 | surface2 | `#F0EDE6` | `#302E2B` | nested areas, berths and wells |
 | accent | `#D97757` | `#D97757` | identity marks and primary actions |
-| accent text | `#B5532F` | `#EB9475` | accent-coloured text and links |
+| accent text | `#A64A28` | `#EB9475` | accent-coloured text and links |
 | accent fill | `#B9583A` | not defined | filled primary buttons (white label) |
-| fresh | `#2F7F6F` | `#72C2AF` | fresh accounts and resets |
-| amber | `#9A6A0E` | `#E8BA5A` | limits from 75%, outdated data |
+| fresh | `#2A7262` | `#72C2AF` | fresh accounts and resets |
+| amber | `#8C5F0B` | `#E8BA5A` | limits from 75%, outdated data |
 | limit | `#B5352E` | `#F27D72` | limits from 90% |
 
 The accent fill is only defined for light mode.
@@ -24,19 +24,17 @@ The accent fill is only defined for light mode.
 
 Text must meet 4.5:1 against its background. The ratios below were checked against the values in the table.
 
-- Light, on white (`surface`): accent text 4.95, fresh 4.79, amber 4.73, limit 5.98. Passes.
-- Light, on paper or `surface2`: accent text 4.23 to 4.46, fresh 4.10 to 4.32, amber 4.04 to 4.26. **Below 4.5:1.** Limit passes on all three (5.11 to 5.39).
+- Light, on any surface (white, paper or `surface2`): accent text 4.95 to 6.31, fresh 4.88 to 5.70, amber 4.78 to 5.59, limit 5.11 to 5.98. All pass.
 - Dark, on any surface: all text colours pass (5.13 to 9.41).
-- White label on accent fill `#B9583A`: 4.65. Passes.
-
-Known gap: in light mode, the accent text, fresh and amber colours fall just short of 4.5:1 when used as text on paper or `surface2`. Use them on `surface` where they are text, or darken them before relying on them for small text on the paper background. The values above are the current spec and have not been changed.
+- White label on accent fill `#B9583A`: 4.65. Dark label on the dark accent `#D97757`: 5.45. Both pass.
+- Secondary text (`#6B6760` light, `#A9A49B` dark) passes on every surface (4.81 to 6.87).
 
 ## Principles
 
 - **The accent marks identity and primary actions only.** The clay orange appears on the anchor, the account identity marks and the main button. It does not colour ordinary status text, borders or backgrounds.
 - **Status never relies on hue alone.** Limit colours are always paired with the percentage, and the FRESH badge is text.
 - **Reduced motion is respected.**
-- **Text meets 4.5:1 contrast** (see the gap above).
+- **Text meets 4.5:1 contrast**.
 - **Increase Contrast is supported**, as it was in 0.1.
 - **Long names truncate** instead of wrapping, so rows stay the same height.
 
