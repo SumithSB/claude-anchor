@@ -84,6 +84,14 @@ Curl installer users re-run the installer. It quits the running app, installs th
 curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.sh | bash
 ```
 
+`brew upgrade` only knows about apps Homebrew installed. If it says `Cask 'claude-anchor' is not installed`, the app came from the curl installer, a downloaded zip or a source build. Either re-run the installer above, or switch to Homebrew so `brew upgrade` works from then on:
+
+```sh
+brew install --cask --force sumithsb/tap/claude-anchor
+```
+
+`--force` replaces the app already in `/Applications`, which Homebrew otherwise refuses to overwrite.
+
 Settings and accounts live in `~/.claude-anchor` and are untouched by upgrades. Config files from earlier versions still load. The new keys are optional.
 
 ## Requirements
