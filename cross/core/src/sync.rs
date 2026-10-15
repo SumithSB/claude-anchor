@@ -137,7 +137,7 @@ mod tests {
     fn prefix_extends_diverged_stays() {
         let tmp = tempfile::tempdir().unwrap();
         let (a, b, led) = (tmp.path().join("a"), tmp.path().join("b"), tmp.path().join("copied"));
-        let rel = |d: &Path, n: &str| d.join("projects/s").join(n);
+        let rel = |d: &Path, n: &str| d.join("projects").join("s").join(n);
         put(&rel(&a, "x.jsonl"), "one\ntwo\n");
         put(&rel(&b, "x.jsonl"), "one\n");          // prefix: extended
         put(&rel(&a, "y.jsonl"), "aaa\nbbb\n");
@@ -158,13 +158,14 @@ mod tests {
     fn sibling_folder_synced_and_logged() {
         let tmp = tempfile::tempdir().unwrap();
         let (a, b, led) = (tmp.path().join("a"), tmp.path().join("b"), tmp.path().join("copied"));
-        put(&a.join("projects/s/x.jsonl"), "main\n");
-        put(&a.join("projects/s/x/subagents/agent-1.jsonl"), "sub\n");
+        put(&a.join("projects").join("s").join("x.jsonl"), "main\n");
+        let sub = |d: &Path| d.join("projects").join("s").join("x").join("subagents").join("agent-1.jsonl");
+        put(&sub(&a), "sub\n");
         fs::create_dir_all(b.join("projects")).unwrap();
         sync_slug("s", &[a, b.clone()], &led);
-        assert_eq!(fs::read_to_string(b.join("projects/s/x/subagents/agent-1.jsonl")).unwrap(), "sub\n");
+        assert_eq!(fs::read_to_string(sub(&b)).unwrap(), "sub\n");
         let l = fs::read_to_string(&led).unwrap();
-        assert!(l.contains(&format!("{}\t4\n", b.join("projects/s/x/subagents/agent-1.jsonl").display())));
+        assert!(l.contains(&format!("{}\t4\n", sub(&b).display())));
     }
 
     #[test]

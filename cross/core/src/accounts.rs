@@ -459,14 +459,15 @@ mod tests {
     fn rules_validate_and_replace() {
         let (_t, mut s) = two();
         // normalize_rule_path belongs to routes.rs; here only the account check and replace/remove/overflow flow.
-        assert!(s.add_rule("/proj", "ghost").is_err());
-        s.add_rule("/proj", "work").unwrap();
-        s.add_rule("/proj", "primary").unwrap();
+        let p = if cfg!(windows) { r"C:\proj" } else { "/proj" };
+        assert!(s.add_rule(p, "ghost").is_err());
+        s.add_rule(p, "work").unwrap();
+        s.add_rule(p, "primary").unwrap();
         assert_eq!(s.config.rules.len(), 1);
         assert_eq!(s.config.rules[0].account_id, "primary");
-        s.set_rule_overflow("/proj", true).unwrap();
+        s.set_rule_overflow(p, true).unwrap();
         assert!(s.config.rules[0].allow_overflow && s.set_rule_overflow("/nope", true).is_err());
-        s.remove_rule("/proj").unwrap();
+        s.remove_rule(p).unwrap();
         assert!(s.config.rules.is_empty());
         assert!(s.add_rule("relative/path", "work").is_err());
     }
