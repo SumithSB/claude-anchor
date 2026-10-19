@@ -322,7 +322,8 @@ final class UsageIndex: @unchecked Sendable {
         assert(t.0 == 1133 && t.1 == 22, "dedup/totals: \(t)")
         let opus = ix.rows(by: .model, days: 1, accounts: [acct], removed: [:]).first { $0.label == "Opus 5.5" }
         // Opus 5.5: $4 in, $20 out, $0.20 cache read, 5-minute writes at 1.25x input.
-        assert(abs((opus?.cost ?? 0) - (10 * 4 + 20 * 20 + 100 * 0.2 + 1000 * 4 * 1.25) / 1e6) < 1e-12, "cost")
+        let opusWant: Double = (10.0 * 4 + 20.0 * 20 + 100.0 * 0.2 + 1000.0 * 4 * 1.25) / 1e6
+        assert(abs((opus?.cost ?? 0) - opusWant) < 1e-12, "cost")
         assert(ix.lastSession?.cwd == "/w/x" && ix.lastSession?.accountID == "t" && ix.lastSession?.editor == false)
         let store = tmp + "/store/usage.json"
         let m0 = (try? FileManager.default.attributesOfItem(atPath: store)[.modificationDate]) as? Date
@@ -367,7 +368,8 @@ final class UsageIndex: @unchecked Sendable {
         h3.seekToEndOfFile(); h3.write((oneH + "\n").data(using: .utf8)!); try? h3.close()
         ix.scan(accounts: [acct])
         let son = ix.rows(by: .model, days: 1, accounts: [acct], removed: [:]).first { $0.label == "Sonnet 5.5" }
-        assert(near(son?.cost ?? 0, (400 * 2 * 1.25 + 600 * 2 * 2) / 1e6), "1h split: \(son?.cost ?? -1)")
+        let sonWant: Double = (400.0 * 2 * 1.25 + 600.0 * 2 * 2) / 1e6
+        assert(near(son?.cost ?? 0, sonWant), "1h split: \(son?.cost ?? -1)")
 
         // Costs stored under an older table are re-priced on load (writes taken as 1-hour, Claude Code's TTL).
         let old = tmp + "/old.json"
