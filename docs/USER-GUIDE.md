@@ -187,6 +187,8 @@ Use this when a conversation has hit the limit on one account and you want to ke
 
 The app copies the transcript to that account and resumes it in a new Terminal tab, with the full history. A confirmation appears when it is done.
 
+If the conversation ran in VS Code or Cursor, there is no Terminal tab. On macOS the app copies the transcript and makes the target account the default instead. Quit and reopen VS Code, then open the conversation from its history; it continues on the new account. If a folder rule pins that folder to another account, the app says so and changes nothing. Change the rule in **Rules** first.
+
 The continued conversation runs on the target account, so its usage is counted there.
 
 ## Troubleshooting

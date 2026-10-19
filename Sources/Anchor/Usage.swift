@@ -4,14 +4,14 @@ import Foundation
 final class UsageIndex: @unchecked Sendable {
     private struct Agg: Codable { var input = 0, output = 0, cacheRead = 0, cacheWrite = 0; var cost = 0.0 }
     private struct FileState: Codable { var offset: UInt64; var size: UInt64; var inode: UInt64 }
-    private struct Last: Codable { var cwd: String; var accountID: String; var ts: Double; var file: String? }
+    private struct Last: Codable { var cwd: String; var accountID: String; var ts: Double; var file: String?; var editor: Bool? }
     private struct State: Codable {
         var agg: [String: Agg] = [:]       // "day\u{1F}account\u{1F}cwd\u{1F}model"
         var files: [String: FileState] = [:]
         var recent: [String] = []          // last dedup keys, so a rescan after truncation doesn't double count
         var last: Last?
     }
-    private struct Rec { var key: String, day: String, cwd: String, model: String, ts: Double
+    private struct Rec { var key: String, day: String, cwd: String, model: String, ts: Double, editor: Bool
                          var input: Int, output: Int, cacheRead: Int, cacheWrite: Int }
 
     private static let sep = "\u{1F}"
@@ -23,10 +23,11 @@ final class UsageIndex: @unchecked Sendable {
     private let storePath: String
     private var state = State()
     private var seen = Set<String>()
+    private var dirty = false   // state differs from what's on disk; a rescan with nothing new skips the write
 
-    var lastSession: (cwd: String, accountID: String, file: String?)? {
+    var lastSession: LastSession? {
         lock.lock(); defer { lock.unlock() }
-        return state.last.map { ($0.cwd, $0.accountID, $0.file) }
+        return state.last.map { ($0.cwd, $0.accountID, $0.file, $0.editor ?? false) }
     }
 
     /// Marks a copied transcript as already read, so its history never counts as the target account's usage.
@@ -54,6 +55,7 @@ final class UsageIndex: @unchecked Sendable {
             let cur = state.files[String(p[0])]
             if cur == nil || cur?.inode != inode || (cur?.offset ?? 0) < size {
                 state.files[String(p[0])] = FileState(offset: size, size: size, inode: inode)
+                dirty = true
             }
             lock.unlock()
         }
@@ -114,12 +116,22 @@ final class UsageIndex: @unchecked Sendable {
         }
         lock.lock()
         let cutoff = dayFmt.string(from: Calendar.current.date(byAdding: .day, value: -Self.keepDays, to: Date()) ?? .distantPast)
+        let n = state.agg.count
         state.agg = state.agg.filter { $0.key.prefix(while: { $0 != "\u{1F}" }) >= cutoff[...] }
+        if state.agg.count != n { dirty = true }
+        let write = dirty
         lock.unlock()
-        persist()
+        // Scans run every couple of seconds while a session writes; re-encoding the whole index each time was
+        // most of the app's idle CPU.
+        if write { persist() }
     }
 
-    private func setFile(_ path: String, _ fs: FileState) { lock.lock(); state.files[path] = fs; lock.unlock() }
+    private func setFile(_ path: String, _ fs: FileState) {
+        lock.lock()
+        if state.files[path].map({ $0.offset != fs.offset || $0.size != fs.size || $0.inode != fs.inode }) ?? true { dirty = true }
+        state.files[path] = fs
+        lock.unlock()
+    }
 
     /// Reads [from, size) in chunks, processing only complete lines; offset advances per chunk.
     private func readNew(path: String, acct: String, from: UInt64, size: UInt64, inode: UInt64,
@@ -151,6 +163,7 @@ final class UsageIndex: @unchecked Sendable {
             lock.lock()
             for r in recs { apply(r, acct: acct, file: path) }
             state.files[path] = FileState(offset: offset, size: size, inode: inode)
+            dirty = true
             lock.unlock()
         }
     }
@@ -169,12 +182,13 @@ final class UsageIndex: @unchecked Sendable {
         func n(_ k: String) -> Int { (u[k] as? NSNumber)?.intValue ?? 0 }
         let key = model == "<synthetic>" ? "" : "\(msg["id"] as? String ?? "")|\(o["requestId"] as? String ?? "")"
         return Rec(key: key, day: dayFmt.string(from: date), cwd: cwd, model: model, ts: date.timeIntervalSince1970,
+                   editor: o["entrypoint"] as? String == "claude-vscode",   // Cursor runs the same extension
                     input: n("input_tokens"), output: n("output_tokens"),
                     cacheRead: n("cache_read_input_tokens"), cacheWrite: n("cache_creation_input_tokens"))
     }
 
     private func apply(_ r: Rec, acct: String, file: String) {   // lock held
-        if r.ts >= (state.last?.ts ?? 0) { state.last = Last(cwd: r.cwd, accountID: acct, ts: r.ts, file: file) }
+        if r.ts >= (state.last?.ts ?? 0) { state.last = Last(cwd: r.cwd, accountID: acct, ts: r.ts, file: file, editor: r.editor) }
         if r.key.isEmpty || r.key == "|" || !seen.insert(r.key).inserted { return }
         state.recent.append(r.key)
         if state.recent.count > Self.maxRecent * 2 {
@@ -197,6 +211,7 @@ final class UsageIndex: @unchecked Sendable {
     private func persist() {
         lock.lock()
         let data = try? JSONEncoder().encode(state)
+        dirty = false   // cleared with the snapshot, so a change made during the write still marks it dirty
         lock.unlock()
         guard let data else { return }
         do {
@@ -204,7 +219,7 @@ final class UsageIndex: @unchecked Sendable {
             try AppModel.writeSecure(data, to: storePath)
             lock.lock(); _persistError = nil; lock.unlock()
         } catch {
-            lock.lock(); _persistError = AppModel.reason(error); lock.unlock()
+            lock.lock(); _persistError = AppModel.reason(error); dirty = true; lock.unlock()
         }
     }
 
@@ -278,15 +293,25 @@ final class UsageIndex: @unchecked Sendable {
         assert(t.0 == 1133 && t.1 == 22, "dedup/totals: \(t)")
         let opus = ix.rows(by: .model, days: 1, accounts: [acct], removed: [:]).first { $0.label == "Opus 5.5" }
         assert(abs((opus?.cost ?? 0) - 0.00685) < 1e-9, "cost")
-        assert(ix.lastSession?.cwd == "/w/x" && ix.lastSession?.accountID == "t")
+        assert(ix.lastSession?.cwd == "/w/x" && ix.lastSession?.accountID == "t" && ix.lastSession?.editor == false)
+        let store = tmp + "/store/usage.json"
+        let m0 = (try? FileManager.default.attributesOfItem(atPath: store)[.modificationDate]) as? Date
+        Thread.sleep(forTimeInterval: 0.05)
         ix.scan(accounts: [acct])
         assert(total().0 == 1133, "rescan must not recount")
+        let m1 = (try? FileManager.default.attributesOfItem(atPath: store)[.modificationDate]) as? Date
+        assert(m0 != nil && m0 == m1, "a rescan with nothing new must not rewrite the index")
 
         let h = FileHandle(forWritingAtPath: file)!
         h.seekToEndOfFile(); h.write((line("3", "claude-haiku-5-5", 5, 5, 0, 0) + "\n").data(using: .utf8)!); try? h.close()
         ix.scan(accounts: [acct])
         t = total()
         assert(t.0 == 1143 && t.1 == 27, "delta: \(t)")
+        let h2 = FileHandle(forWritingAtPath: file)!
+        let vs = line("4", "claude-haiku-5-5", 0, 0, 0, 0).replacingOccurrences(of: #""cwd""#, with: #""entrypoint":"claude-vscode","cwd""#)
+        h2.seekToEndOfFile(); h2.write((vs + "\n").data(using: .utf8)!); try? h2.close()
+        ix.scan(accounts: [acct])
+        assert(ix.lastSession?.editor == true, "a VS Code conversation is marked as one")
 
         let ix2 = UsageIndex(storePath: tmp + "/store/usage.json")   // persisted state reloads
         ix2.scan(accounts: [acct])

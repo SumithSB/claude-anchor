@@ -120,6 +120,9 @@ struct UsageRow: Identifiable, Hashable {
     var cost: Double          // estimated USD
 }
 
+/// The newest conversation across accounts. `editor`: it ran in VS Code or Cursor, not the terminal.
+typealias LastSession = (cwd: String, accountID: String, file: String?, editor: Bool)
+
 @Observable @MainActor
 final class AppModel {
     var config = Config()
@@ -127,7 +130,7 @@ final class AppModel {
     var usageRows: [UsageRow] = []
     var groupBy: GroupBy = .account { didSet { refreshRows() } }
     var rangeDays: Int = 7 { didSet { refreshRows() } }
-    var lastSession: (cwd: String, accountID: String, file: String?)?
+    var lastSession: LastSession?
     var overflowSuggestion: String?          // account id to continue the last conversation on
     var banner: String?                      // last overflow / error message shown in popover
     var signingIn: Set<String> = []          // accounts with a browser sign-in in progress

@@ -1,6 +1,9 @@
 import Foundation
 import CryptoKit
 import UserNotifications
+import os
+
+private let log = Logger(subsystem: "dev.claude-anchor", category: "limits")
 
 extension AppModel {
     /// Keychain service Claude Code uses for this config dir.
@@ -27,6 +30,14 @@ extension AppModel {
         return Limits(fiveHour: win("five_hour"), weekly: win("seven_day"), fetchedAt: fetchedAt, stale: stale)
     }
 
+    /// One missed check (a 429 because Claude Code polls the same endpoint, or a network blip) isn't worth a
+    /// warning: the last live numbers stand as they are until they're 10 minutes old.
+    nonisolated static func keptQuietly(_ p: Limits?, now: Date) -> Limits? {
+        guard let p, p.error == nil, !p.stale, p.fiveHour != nil || p.weekly != nil,
+              now.timeIntervalSince(p.fetchedAt) < 600 else { return nil }
+        return p
+    }
+
     nonisolated static let offlineNote = "Couldn't reach Anthropic. Showing the last known usage."
 
     /// Live fetch with the CLI's own access token. Never refreshes it (that would rotate the refresh token).
@@ -50,11 +61,16 @@ extension AppModel {
                         if l.fiveHour != nil || l.weekly != nil { return l }
                         unreachable = true     // 200 but not the shape we know
                     } else { unreachable = true }   // 5xx, 429, or not JSON
-                } else { unreachable = true }       // offline, DNS, timeout
+                    if unreachable { log.notice("usage check for \(a.id, privacy: .public): HTTP \(h.statusCode, privacy: .public)") }
+                } else {
+                    unreachable = true              // offline, DNS, timeout
+                    log.notice("usage check for \(a.id, privacy: .public): no response")
+                }
             } else {
                 expired = true
             }
         }
+        if unreachable, let p = keptQuietly(previous, now: now) { return p }
         if unreachable, let p = previous, p.error == nil, p.fiveHour != nil || p.weekly != nil {
             var l = p
             l.stale = true; l.note = offlineNote
@@ -77,9 +93,33 @@ extension AppModel {
                       needsSignIn: expired)
     }
 
+    nonisolated static func selfTest() {
+        let now = Date()
+        let live = Limits(fiveHour: LimitWindow(percent: 40, resetsAt: nil), weekly: nil, fetchedAt: now.addingTimeInterval(-300))
+        assert(keptQuietly(live, now: now)?.stale == false, "recent live numbers are kept as is")
+        assert(keptQuietly(live, now: now.addingTimeInterval(400)) == nil, "10 minutes old: say so")
+        var cached = live; cached.stale = true
+        assert(keptQuietly(cached, now: now) == nil, "cached numbers are never passed off as live")
+        var failed = live; failed.error = "x"
+        assert(keptQuietly(failed, now: now) == nil && keptQuietly(nil, now: now) == nil)
+        let empty = Limits(fiveHour: nil, weekly: nil, fetchedAt: now)
+        assert(keptQuietly(empty, now: now) == nil)
+        var c = Config()
+        c.defaultID = "d"
+        c.rules = [Rule(path: "/w", accountID: "a"), Rule(path: "/w/x", accountID: "b", allowOverflow: true)]
+        assert(routedAccount(cwd: "/elsewhere", config: c, limits: [:]) == "d")
+        assert(routedAccount(cwd: "/w/y", config: c, limits: [:]) == "a", "rule wins over the default")
+        assert(routedAccount(cwd: "/wx", config: c, limits: [:]) == "d", "prefix match is per folder")
+        assert(routedAccount(cwd: "/w/x/z", config: c, limits: [:]) == "b", "longest rule wins")
+        let hot = ["b": Limits(fiveHour: LimitWindow(percent: 95, resetsAt: nil), weekly: nil, fetchedAt: now)]
+        assert(routedAccount(cwd: "/w/x", config: c, limits: hot) == "d", "overflow rule follows the default when hot")
+        print("Limits selfTest OK")
+    }
+
     func refreshLimits() async {
         let list = accounts.filter { !$0.pending }.map { ($0, limits[$0.id]) }
         let before = limits
+        let started = Date()
         let results = await withTaskGroup(of: (String, Limits).self) { g -> [String: Limits] in
             for (a, prev) in list { g.addTask { (a.id, await Self.fetchLimits(a, previous: prev)) } }
             var r: [String: Limits] = [:]
@@ -88,7 +128,8 @@ extension AppModel {
         }
         AnchorRuntime.limitsAttempted = true
         for (id, l) in results { limits[id] = l }
-        if results.values.contains(where: { $0.error == nil }) { lastRefreshed = Date() }
+        // A kept-over result still has its old fetchedAt; only a real fetch counts as "updated".
+        if results.values.contains(where: { $0.error == nil && $0.fetchedAt >= started }) { lastRefreshed = Date() }
         evaluateFresh(before: before)
         evaluateOverflow()
     }

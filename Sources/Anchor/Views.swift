@@ -644,7 +644,7 @@ private struct Ring: View {
         if let s = model.lastSession { content(s) }
     }
 
-    private func content(_ s: (cwd: String, accountID: String, file: String?)) -> some View {
+    private func content(_ s: LastSession) -> some View {
         let src = model.account(s.accountID)
         let targets = model.continueTargets.filter { $0.id != s.accountID }
         let sel = targets.first { $0.id == picked } ?? targets.first
@@ -662,7 +662,7 @@ private struct Ring: View {
             }
             .accessibilityElement(children: .combine)
             if let d = doneID, let t = model.account(d) {
-                doneRow(t, src: src)
+                doneRow(t, src: src, editor: s.editor)
             } else if targets.isEmpty {
                 Text("Add a second account to continue a conversation there when this one runs out.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -685,7 +685,8 @@ private struct Ring: View {
                 }
                 .buttonStyle(ClayButtonStyle())
                 .disabled(s.file == nil)
-                .help("Opens in a new Terminal tab with the full history.")
+                .help(s.editor ? "Anchors at \(sel.name). Reopen VS Code to pick the conversation up there."
+                               : "Opens in a new Terminal tab with the full history.")
                 .accessibilityLabel("Continue on \(sel.name)")
             }
         }
@@ -698,12 +699,14 @@ private struct Ring: View {
         return model.limits[t.id]?.fiveHour.map { "\(Int($0.percent.rounded()))% used" } ?? ""
     }
 
-    private func doneRow(_ t: Account, src: Account?) -> some View {
+    private func doneRow(_ t: Account, src: Account?, editor: Bool) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Clay.fresh).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Reopened on \(t.name) in Terminal.").font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                Text("Full history carried over. The old one stays on \(src?.name ?? "the original account").")
+                Text(editor ? "Anchored at \(t.name)." : "Reopened on \(t.name) in Terminal.")
+                    .font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(editor ? "Quit and reopen VS Code, then open this conversation from its history. It continues on \(t.name)."
+                            : "Full history carried over. The old one stays on \(src?.name ?? "the original account").")
                     .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)

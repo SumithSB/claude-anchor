@@ -280,6 +280,17 @@ extension AppModel {
         return out + "default\t\(dir(config.defaultID))\n"
     }
 
+    /// The account `claude` gets in `cwd`, by the same rules as the routes file: longest matching folder rule
+    /// (its overflow sends it to the default while hot), else the default.
+    nonisolated static func routedAccount(cwd: String, config: Config, limits: [String: Limits]) -> String {
+        let rule = config.rules.filter { $0.path == "/" || cwd == $0.path || cwd.hasPrefix($0.path + "/") }
+            .max { $0.path.count < $1.path.count }
+        guard let r = rule else { return config.defaultID }
+        let l = limits[r.accountID]
+        let hot = max(l?.fiveHour?.percent ?? 0, l?.weekly?.percent ?? 0) >= config.overflowThreshold
+        return r.allowOverflow && hot ? config.defaultID : r.accountID
+    }
+
     func writeRoutes() {
         guard !saveBlocked else { return }
         do {
@@ -333,12 +344,19 @@ extension AppModel {
         let sid = ((file as NSString).lastPathComponent as NSString).deletingPathExtension
         // Only real session ids reach the Terminal command line.
         guard UUID(uuidString: sid) != nil else { banner = "That conversation can't be continued."; return }
+        if s.editor, let why = editorBlocked(s, on: t) { banner = why; return }
         let copied: [String]
         do { copied = try Self.copyTranscript(file: file, to: t.dir) } catch {
             banner = "Couldn't copy the conversation to \(t.name): \(Self.reason(error)). Check that \(abbreviate(t.dir)) is writable."
             return
         }
         copied.forEach(usage.markCopied)
+        if s.editor {   // VS Code runs its own claude: anchor here and its next launch picks the conversation up
+            overflowSuggestion = nil
+            banner = nil
+            if config.defaultID != t.id { setDefault(t.id) }
+            return
+        }
         var isDir: ObjCBool = false
         let cwdOK = fm.fileExists(atPath: s.cwd, isDirectory: &isDir) && isDir.boolValue
         let cwd = cwdOK ? s.cwd : Paths.home
@@ -359,6 +377,17 @@ extension AppModel {
                 self.banner = done ? ok : "Couldn't open Terminal. Allow Claude Anchor to control Terminal in System Settings > Privacy & Security > Automation, then try again."
             }
         }
+    }
+
+    /// Continuing in VS Code means anchoring at `t`; nil when that would route the folder there, else why not.
+    private func editorBlocked(_ s: LastSession, on t: Account) -> String? {
+        var after = config
+        after.defaultID = t.id
+        if Self.routedAccount(cwd: s.cwd, config: after, limits: limits) == t.id { return nil }
+        let rule = config.rules.filter { s.cwd == $0.path || s.cwd.hasPrefix($0.path + "/") || $0.path == "/" }
+            .max { $0.path.count < $1.path.count }
+        let pinned = rule.flatMap { account($0.accountID) }?.name ?? "another account"
+        return "\(abbreviate(rule?.path ?? s.cwd)) always uses \(pinned) (a folder rule). Change it in Rules to continue on \(t.name) in VS Code."
     }
 
     // MARK: accounts

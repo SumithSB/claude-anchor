@@ -27,25 +27,43 @@ extension Color {
     let flag: SignalFlag
     var size: CGFloat = 14
 
+    // Shapes, not Canvas: the first Canvas on screen costs about 100 MB of graphics memory.
     var body: some View {
-        Canvas { ctx, sz in FlagArt.draw(flag, ctx, CGRect(origin: .zero, size: sz)) }
-            .frame(width: size * 1.5, height: size)
-            .accessibilityLabel("Flag \(flag.letter)")
+        GeometryReader { g in
+            let art = FlagArt.art(flag, CGRect(origin: .zero, size: g.size))
+            ZStack(alignment: .topLeading) {
+                ForEach(art.fills.indices, id: \.self) { i in art.fills[i].path.fill(art.fills[i].color) }
+                ForEach(art.strokes.indices, id: \.self) { i in
+                    art.strokes[i].path.stroke(art.strokes[i].color, lineWidth: art.strokes[i].width)
+                }
+            }
+            .overlay(art.outline.stroke(Color.black.opacity(0.3), lineWidth: 0.5))
+            .clipShape(art.outline)   // inner half of the outline only, as the Canvas clip showed it
+        }
+        .frame(width: size * 1.5, height: size)
+        .accessibilityLabel("Flag \(flag.letter)")
     }
 }
 
 enum FlagArt {
     static let W = Color.white, K = Color.black, R = Color.signalRed, B = Color.flagBlue, Y = Color.flagYellow
 
-    static func draw(_ f: SignalFlag, _ ctx: GraphicsContext, _ r: CGRect) {
-        var g = ctx
+    struct Art {
+        var outline = Path()
+        var fills: [(path: Path, color: Color)] = []
+        var strokes: [(path: Path, color: Color, width: CGFloat)] = []
+    }
+
+    /// The flag as paths in `r`; FlagView clips them to `outline` and strokes the outline on top.
+    static func art(_ f: SignalFlag, _ r: CGRect) -> Art {
+        var g = Art()
         func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + x * r.width, y: r.minY + y * r.height) }
         func box(_ x0: CGFloat, _ y0: CGFloat, _ x1: CGFloat, _ y1: CGFloat, _ c: Color) {
             let a = P(x0, y0), b = P(x1, y1)   // +0.3 overlap hides antialiasing seams between neighbours
-            g.fill(Path(CGRect(x: a.x, y: a.y, width: b.x - a.x + 0.3, height: b.y - a.y + 0.3)), with: .color(c))
+            g.fills.append((Path(CGRect(x: a.x, y: a.y, width: b.x - a.x + 0.3, height: b.y - a.y + 0.3)), c))
         }
         func poly(_ pts: [(CGFloat, CGFloat)], _ c: Color) {
-            var p = Path(); p.addLines(pts.map { P($0.0, $0.1) }); p.closeSubpath(); g.fill(p, with: .color(c))
+            var p = Path(); p.addLines(pts.map { P($0.0, $0.1) }); p.closeSubpath(); g.fills.append((p, c))
         }
         func hs(_ cols: [Color]) { for (i, c) in cols.enumerated() { box(0, CGFloat(i) / CGFloat(cols.count), 1, CGFloat(i + 1) / CGFloat(cols.count), c) } }
         func vs(_ cols: [Color]) { for (i, c) in cols.enumerated() { box(CGFloat(i) / CGFloat(cols.count), 0, CGFloat(i + 1) / CGFloat(cols.count), 1, c) } }
@@ -54,14 +72,12 @@ enum FlagArt {
         }
         func saltire(_ c: Color) {
             var p = Path(); p.move(to: P(0, 0)); p.addLine(to: P(1, 1)); p.move(to: P(1, 0)); p.addLine(to: P(0, 1))
-            g.stroke(p, with: .color(c), lineWidth: r.height * 0.24)
+            g.strokes.append((p, c, r.height * 0.24))
         }
         func cross(_ c: Color) { box(0.43, 0, 0.57, 1, c); box(0, 0.4, 1, 0.6, c) }
 
-        var outline = Path()
-        if f == .a || f == .b { outline.addLines([P(0, 0), P(1, 0), P(0.72, 0.5), P(1, 1), P(0, 1)]); outline.closeSubpath() }
-        else { outline.addRect(r) }
-        g.clip(to: outline)
+        if f == .a || f == .b { g.outline.addLines([P(0, 0), P(1, 0), P(0.72, 0.5), P(1, 1), P(0, 1)]); g.outline.closeSubpath() }
+        else { g.outline.addRect(r) }
 
         switch f {
         case .a: box(0, 0, 0.5, 1, W); box(0.5, 0, 1, 1, B)
@@ -75,7 +91,7 @@ enum FlagArt {
         case .i:
             box(0, 0, 1, 1, Y)
             let c = P(0.5, 0.5), rr = r.height * 0.26
-            g.fill(Path(ellipseIn: CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2)), with: .color(K))
+            g.fills.append((Path(ellipseIn: CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2)), K))
         case .j: hs([B, W, B])
         case .k: vs([Y, B])
         case .l: quarters(Y, K, K, Y)
@@ -104,7 +120,7 @@ enum FlagArt {
             poly([(0, 0), (1, 0), (0.5, 0.5)], Y); poly([(1, 0), (1, 1), (0.5, 0.5)], B)
             poly([(1, 1), (0, 1), (0.5, 0.5)], K); poly([(0, 1), (0, 0), (0.5, 0.5)], R)
         }
-        ctx.stroke(outline, with: .color(.black.opacity(0.3)), lineWidth: 0.5)
+        return g
     }
 }
 

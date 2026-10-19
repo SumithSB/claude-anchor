@@ -218,7 +218,7 @@ Its settings are listed in the [settings reference](#settings-reference).
 
 ### Continue a conversation
 
-The **Last conversation** card replaces the old Continue on menu. It shows the conversation's folder and one account menu, with fresh accounts first. Pick an account and click **Continue on <Name>**. The app copies the transcript to that account and resumes it in a new Terminal tab. A confirmation appears when it is done.
+The **Last conversation** card replaces the old Continue on menu. It shows the conversation's folder and one account menu, with fresh accounts first. Pick an account and click **Continue on <Name>**. The app copies the transcript to that account and resumes it in a new Terminal tab. A confirmation appears when it is done. For a conversation that ran in VS Code or Cursor (macOS), it makes that account the default instead: quit and reopen VS Code, then open the conversation from its history.
 
 A running session keeps its account. Continuing starts a new process under the other account.
 
@@ -334,7 +334,7 @@ Removes the app, the `.desktop` entries, the autostart entry, the shell hook lin
 
 - Unofficial; not affiliated with or endorsed by Anthropic.
 - Relies on undocumented Claude Code behaviour that may change: Keychain service naming, the `.credentials.json` location on Windows and Linux, the usage endpoint, and the transcript layout.
-- A running session can't change account. Claude Code picks its config dir and Keychain login once, at startup, and nothing outside the process can change that. Changing the default account or a folder rule affects new sessions only. To move a conversation, use **Continue on <Name>** in the Last conversation card, which copies the transcript and resumes it in a new process (in Terminal). Running `/login` inside a session replaces that account's login; it doesn't switch accounts.
+- A running session can't change account. Claude Code picks its config dir and Keychain login once, at startup, and nothing outside the process can change that. Changing the default account or a folder rule affects new sessions only. To move a conversation, use **Continue on <Name>** in the Last conversation card, which copies the transcript and resumes it in a new process (in Terminal, or in VS Code after you reopen it). Running `/login` inside a session replaces that account's login; it doesn't switch accounts.
 - Ad-hoc signed, not notarized. The installer clears the quarantine flag; a manually downloaded zip may need right-click, Open.
 - Windows and Linux builds are unsigned, and are newer than the macOS app. Please report tray, window placement or terminal problems as issues.
 
