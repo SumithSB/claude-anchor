@@ -12,3 +12,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift build -c release
       - run: zsh shell/anchor.zsh --selftest
+      - run: swift build && .build/debug/Anchor --self-test

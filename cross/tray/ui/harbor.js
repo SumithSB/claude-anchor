@@ -2,7 +2,7 @@
 // Port of Sources/Anchor/Harbor.swift. Pointer events for the drag, rAF tweens for the sail (no images).
 import { flagSVG, anchorSVG } from "./flags.js";
 
-const HEIGHT = 220, DY = 132, BERTH_TOP = 144, WATER_Y = 66;
+const HEIGHT = 230, DY = 132, BERTH_TOP = 144, WATER_Y = 66;
 const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -94,27 +94,27 @@ export function createHarbor({ W = 308, getState, helpers, onPick, onAdd }) {
 
   function buildBerths() {
     const L = lay(), list = berths(), roomy = L.mode === "full", S = getState();
-    const key = JSON.stringify([L.mode, L.n, list.map((a) => [a.id, a.name, a.flag, S.limits[a.id]?.fiveHour?.percent, S.limits[a.id]?.fiveHour?.resetsAt, helpers.isFresh(a.id)]), S.config.defaultID, dragging]);
+    const key = JSON.stringify([L.mode, L.n, list.map((a) => [a.id, a.name, a.flag, S.limits[a.id]?.fiveHour?.percent, S.limits[a.id]?.fiveHour?.resetsAt, helpers.isFresh(a.id), helpers.countdown(a.id)]), S.config.defaultID, dragging]);
     if (key === lastKey) return;
     lastKey = key;
     let html = "";
     list.forEach((a, i) => {
       const pct = S.limits[a.id]?.fiveHour?.percent, fresh = helpers.isFresh(a.id), on = i === activeIdx() && !dragging;
-      const cd = (pct ?? 0) >= 75 ? helpers.countdown(a.id) : null;
+      const cd = fresh ? null : helpers.countdown(a.id);
       let st, color;
       if (fresh) { st = roomy ? (on ? "Anchored · full 5h" : "Full 5h window") : "Full"; color = "var(--fresh)"; }
       else if (pct == null) { st = "—"; color = "var(--text2)"; }
       else {
         const n = Math.round(pct);
         if (on) { st = roomy ? `Anchored · ${n}%` : `${n}%`; color = "var(--accent-text)"; }
-        else if (roomy && cd) { st = `${n}% · ↻ ${cd}`; color = helpers.color(pct); }
         else { st = (roomy ? "5h " : "") + `${n}%`; color = helpers.color(pct); }
       }
+      const sub = cd ? (roomy ? `resets in ${cd}` : `↻ ${cd}`) : fresh ? (roomy ? "ready now" : "") : "\u00a0";
       let label = `Anchor at ${a.name}, `;
       label += fresh ? "fresh 5-hour window" : pct != null ? `5-hour limit ${Math.round(pct)} percent used${cd ? `, resets in ${cd}` : ""}` : "5-hour limit unknown";
       const nm = roomy ? a.name : a.name.split(" ")[0];
       html += `<button class="berth ${roomy ? "" : "compact"}" data-i="${i}" title="${esc(a.name)}" aria-label="${esc(label)}" aria-current="${i === activeIdx()}" style="left:${L.x(i) - L.w / 2}px;width:${L.w}px">` +
-        `${flagSVG(a.flag, roomy ? 13 : 11)}<span class="nm trunc">${esc(nm)}</span><span class="st" style="color:${color}${st.length > 15 ? ";font-size:9px" : ""}">${esc(st)}</span>` +
+        `${flagSVG(a.flag, roomy ? 13 : 11)}<span class="nm trunc">${esc(nm)}</span><span class="st" style="color:${color}${st.length > 15 ? ";font-size:9px" : ""}">${esc(st)}</span><span class="sub" style="color:${fresh ? "var(--fresh)" : "var(--text2)"}">${esc(sub || "\u00a0")}</span>` +
         (fresh ? `<span class="badge" aria-hidden="true">${roomy ? "FRESH" : ""}</span>` : "") + `</button>`;
     });
     if (L.ghost) {

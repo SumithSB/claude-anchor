@@ -12,6 +12,11 @@ import AppKit
             MainActor.assumeIsolated { BragAssets.run(dir: a[i + 1]) }
             exit(0)
         }
+        if a.contains("--self-test") {   // CI; build in debug so asserts fire
+            UsageIndex.selfTest()
+            AppModel.selfTest()
+            exit(0)
+        }
         MainActor.assumeIsolated { AnchorApp.main() }
     }
 }
@@ -45,24 +50,44 @@ extension AppModel {
 }
 
 /// Anchor glyph inside a ring whose sweep is the 5h utilization. Template, except red at 90% and up.
+/// Drawn with Core Graphics: ImageRenderer spins up a Metal pipeline, about 100 MB at launch for an 18 pt icon.
 @MainActor enum MenuBarIcon {
     static func image(percent: Double?, ink: Color = .black, scale: CGFloat = 2) -> NSImage {
         let hot = (percent ?? 0) >= 90
-        let ring = hot ? Color.signalRed : ink
-        let view = ZStack {
-            AnchorGlyph().stroke(ink, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
-                .frame(width: 10, height: 11)
-            if let p = percent {
-                Circle().stroke(ring.opacity(0.25), lineWidth: 1.5)
-                Circle().trim(from: 0, to: max(0.02, min(1, p / 100)))
-                    .stroke(ring, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
+        let size = NSSize(width: 18, height: 18)
+        let img = NSImage(size: size)
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(18 * scale), pixelsHigh: Int(18 * scale),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ns = NSGraphicsContext(bitmapImageRep: rep) else { return img }
+        rep.size = size
+        let cg = ns.cgContext
+        cg.scaleBy(x: scale, y: scale)
+        cg.translateBy(x: 0, y: 18); cg.scaleBy(x: 1, y: -1)   // y down, like the SwiftUI shapes
+        cg.setLineCap(.round); cg.setLineJoin(.round)
+
+        let inkC = NSColor(ink).cgColor
+        cg.setStrokeColor(inkC); cg.setLineWidth(1.4)
+        cg.addPath(AnchorGlyph().path(in: CGRect(x: 4, y: 3.5, width: 10, height: 11)).cgPath)
+        cg.strokePath()
+
+        if let p = percent {
+            let ring = hot ? NSColor(Color.signalRed).cgColor : inkC
+            let box = CGRect(x: 1, y: 1, width: 16, height: 16)
+            cg.setLineWidth(1.5)
+            cg.setStrokeColor(ring.copy(alpha: ring.alpha * 0.25) ?? ring)
+            cg.strokeEllipse(in: box)
+            // Starts at 12 o'clock and sweeps clockwise (y is down, so increasing angles run clockwise).
+            let sweep = max(0.02, min(1, p / 100))
+            var arc = Path()
+            arc.addArc(center: CGPoint(x: 9, y: 9), radius: 8, startAngle: .degrees(-90),
+                       endAngle: .degrees(-90 + 360 * sweep), clockwise: false)
+            cg.setStrokeColor(ring)
+            cg.addPath(arc.cgPath)
+            cg.strokePath()
         }
-        .padding(1).frame(width: 18, height: 18)
-        let r = ImageRenderer(content: view)
-        r.scale = scale
-        let img = r.nsImage ?? NSImage(systemSymbolName: "anchor", accessibilityDescription: "Claude Anchor") ?? NSImage()
+        ns.flushGraphics()
+        img.addRepresentation(rep)
         img.isTemplate = !hot
         return img
     }
@@ -191,7 +216,7 @@ extension AppModel {
         m.config.rules = [Rule(path: Paths.home + "/code/website", accountID: "primary"),
                           Rule(path: Paths.home + "/code/client-app", accountID: "client", allowOverflow: true),
                           Rule(path: Paths.home + "/notes", accountID: "personal")]
-        m.lastSession = (cwd: Paths.home + "/code/website", accountID: "primary", file: "/x/s.jsonl")
+        m.lastSession = (cwd: Paths.home + "/code/website", accountID: "primary", file: "/x/s.jsonl", editor: false)
         return m
     }
 }

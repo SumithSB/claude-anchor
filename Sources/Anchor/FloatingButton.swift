@@ -71,7 +71,9 @@ enum FloatingFormat {
                     .opacity(reduceMotion ? 0.85 : (pulse ? 1 : 0.55))
                     .onAppear {
                         guard !reduceMotion else { return }
-                        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { pulse = true }
+                        // A few pulses, not forever: an endless blur animation keeps the GPU busy while any account is fresh.
+                        // Odd count so it settles on the bright end.
+                        withAnimation(.easeInOut(duration: 1.1).repeatCount(5, autoreverses: true)) { pulse = true }
                     }
                     .onDisappear { pulse = false }
             }

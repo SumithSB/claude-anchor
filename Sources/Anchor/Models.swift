@@ -58,6 +58,7 @@ struct Config: Codable {
     var floatingAllSpaces: Bool = true        // show on every Space and over full-screen apps
     var floatingX: Double?                    // last position, screen points (bottom-left origin)
     var floatingY: Double?
+    var showAPIPrices: Bool?                  // nil: only when an account pays per token (no subscription plan)
 }
 
 extension Config {
@@ -80,6 +81,7 @@ extension Config {
         floatingAllSpaces = try c.decodeIfPresent(Bool.self, forKey: .floatingAllSpaces) ?? true
         floatingX = try c.decodeIfPresent(Double.self, forKey: .floatingX)
         floatingY = try c.decodeIfPresent(Double.self, forKey: .floatingY)
+        showAPIPrices = try c.decodeIfPresent(Bool.self, forKey: .showAPIPrices)
     }
 }
 
@@ -120,6 +122,9 @@ struct UsageRow: Identifiable, Hashable {
     var cost: Double          // estimated USD
 }
 
+/// The newest conversation across accounts. `editor`: it ran in VS Code or Cursor, not the terminal.
+typealias LastSession = (cwd: String, accountID: String, file: String?, editor: Bool)
+
 @Observable @MainActor
 final class AppModel {
     var config = Config()
@@ -127,7 +132,7 @@ final class AppModel {
     var usageRows: [UsageRow] = []
     var groupBy: GroupBy = .account { didSet { refreshRows() } }
     var rangeDays: Int = 7 { didSet { refreshRows() } }
-    var lastSession: (cwd: String, accountID: String, file: String?)?
+    var lastSession: LastSession?
     var overflowSuggestion: String?          // account id to continue the last conversation on
     var banner: String?                      // last overflow / error message shown in popover
     var signingIn: Set<String> = []          // accounts with a browser sign-in in progress
@@ -143,6 +148,9 @@ final class AppModel {
     var accounts: [Account] { config.accounts }
     var active: Account? { config.accounts.first { $0.id == config.defaultID } ?? config.accounts.first }
     func account(_ id: String) -> Account? { config.accounts.first { $0.id == id } }
+
+    /// Dollar estimates mean something only at API rates; on a subscription they read like a bill nobody pays.
+    var showsAPIPrices: Bool { config.showAPIPrices ?? accounts.contains { !$0.pending && $0.plan == nil } }
 
     func refreshRows() {
         usageRows = usage.rows(by: groupBy, days: rangeDays, accounts: config.accounts, removed: config.removedNames)

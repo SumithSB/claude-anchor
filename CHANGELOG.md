@@ -2,6 +2,29 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-10-19
+
+### Added
+
+- Every berth shows when its 5-hour window resets ("resets in 1h 39m"), not only accounts near their limit. Fresh accounts say "ready now".
+- **Settings > Usage > Show API-price estimates** (`showAPIPrices`). Dollar estimates are hidden by default on Pro, Max and Team plans, which are a flat fee.
+- **Reopen in VS Code** after continuing a VS Code or Cursor conversation on another account (macOS).
+- `Anchor --self-test` runs the usage and limits self-tests, and CI runs it.
+
+### Changed
+
+- API-price estimates use current list prices: Opus 5.5, Sonnet 5, Haiku 5.5 (with its long-prompt tier), Fable, per-model cache reads, and 1-hour cache writes at 2x input. Costs already stored are re-priced once.
+- Continue on a conversation from VS Code or Cursor anchors at the target account instead of opening Terminal. A folder rule that would keep it on the old account blocks this with a message (macOS).
+- The fresh card is one row of account chips instead of a button per account (macOS).
+- The pop-out can be minimized, and its width stays between 340 and 420 pt (macOS).
+- The pop-out refreshes at least once a minute unless refresh is set to manual (macOS).
+
+### Fixed
+
+- Limits shown from old data no longer count usage from a window that has already reset. Such a window reads as unused.
+- One failed limits check (a 429 or a network blip) keeps the last numbers quietly. "Couldn't reach Anthropic" shows only after 10 minutes (macOS).
+- Much lower memory and CPU on macOS: with the pop-out open, 149 MB to 34 MB and 4.8% to 0.8% CPU. The harbor sea animates only while the anchor moves, the fresh glow pulses five times instead of forever, and unchanged usage isn't rewritten to disk.
+
 ## [0.4.2] - 2026-10-15
 
 ### Fixed

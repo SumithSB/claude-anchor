@@ -321,6 +321,7 @@ fn set_setting(app: AppHandle, key: String, value: Value) -> Result<Value, Strin
             "floatingButton" => c.floating_button = b()?,
             "floatingSnap" => c.floating_snap = b()?,
             "floatingFade" => c.floating_fade = b()?,
+            "showAPIPrices" => c.show_api_prices = Some(b()?),
             _ => return Err(format!("Unknown setting {key}.")),
         }
         g.store.save()

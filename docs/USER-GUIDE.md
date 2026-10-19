@@ -47,18 +47,19 @@ Click the anchor in the menu bar. The window is a fixed height and scrolls. From
 
 - **Header:** the app name, how many accounts are routed, the Updated line, and two buttons: pop-out and refresh.
 - **Harbor switcher:** your accounts as berths. See [Switching the default account](#switching-the-default-account).
-- **Fresh card:** "Anchor at <Name>" when another account is fresh. When only the account you're on is fresh, a teal card says "<Name> has a full 5-hour window" and that your limit just reset.
+- **Fresh card:** "Full 5-hour window on" with a chip for each fresh account; click a chip to anchor there. When only the account you're on is fresh, a teal card says "<Name> has a full 5-hour window" and that your limit just reset.
 - **Account card:** the default account, with its 5-hour and weekly rings.
-- **Usage card:** tokens and estimated API cost for Today, 7 days or 30 days, by account, project or model.
+- **Usage card:** tokens for Today, 7 days or 30 days, by account, project or model. Accounts on a Pro, Max or Team plan pay a flat fee, so the card shows no dollars for them. **Settings > Usage > Show API-price estimates** adds what the same usage would cost at API prices.
 - **Last conversation card:** see [Continuing a conversation](#continuing-a-conversation).
 - **Bottom bar:** **Accounts**, **Rules**, **Settings**, and a Quit button.
 
 Accounts, Rules and Settings open as panes. Each pane groups its rows in cards under a small caption, with a note below. Click the back button at the top left to return.
 
-Settings has three cards:
+Settings has four cards:
 
 - **General:** launch at login, bell sound, auto-switch near limit, and use in VS Code and Cursor.
 - **Limits:** how often limits refresh, and the fresh-reset notification.
+- **Usage:** show API-price estimates. Off by default on Pro, Max and Team plans.
 - **Floating button:** show the button (⌥⌘A), snap to screen edges, fade when idle, and show on every Space.
 
 ## Adding accounts
@@ -116,9 +117,11 @@ An account is **fresh** when its 5-hour window has reset and it has not been use
 Where you'll see it:
 
 - A teal **FRESH** badge on the account's berth.
-- In the menu, an **Anchor at <Name>** card when another account is fresh. Click it to make that account the default. When only the account you're on is fresh, a teal card says "<Name> has a full 5-hour window" instead.
-- A pulsing teal glow and ↻ badge on the floating button.
-- For accounts near their limit, a countdown to the reset, such as `92% · ↻ 22m`.
+- In the menu, a **Full 5-hour window on** card with a chip for each fresh account (up to three, then "+N"). Click a chip to make that account the default. When only the account you're on is fresh, a teal card says "<Name> has a full 5-hour window" instead.
+- A teal glow and ↻ badge on the floating button. The glow pulses five times, then stays lit.
+- "ready now" under a fresh account's berth.
+
+Every other berth shows when its 5-hour window resets, such as "resets in 1h 39m", so you can see which account frees up next.
 - A notification: "<Name>'s 5-hour window reset. Full window available." For the account you're on, it says "<Name>'s 5-hour window reset. You're on a full window."
 
 To turn the notification off, open Settings and turn off the fresh-reset notification. The config key is `notifyFresh`.
@@ -187,6 +190,8 @@ Use this when a conversation has hit the limit on one account and you want to ke
 
 The app copies the transcript to that account and resumes it in a new Terminal tab, with the full history. A confirmation appears when it is done.
 
+If the conversation ran in VS Code or Cursor, there is no Terminal tab. On macOS the app copies the transcript and makes the target account the default instead. Close the conversation's tab in VS Code, then click **Reopen in VS Code**; it opens again on the new account with its history. A tab that is still open keeps its old account, because a running Claude Code session can't change account. If a folder rule pins that folder to another account, the app says so and changes nothing. Change the rule in **Rules** first.
+
 The continued conversation runs on the target account, so its usage is counted there.
 
 ## Troubleshooting
@@ -208,6 +213,12 @@ After that, `brew upgrade --cask claude-anchor` works. Your settings and account
 - Check **Settings > Refresh limits**. If it is set to **Manual only**, the numbers change only when you refresh.
 - Make sure the account is signed in to Claude Code. The app reads the login that Claude Code keeps (the Keychain on macOS, `.credentials.json` on Windows and Linux), and it never refreshes tokens itself. Run `claude` once in that account; Claude Code refreshes the token.
 - If the network is down or `api.anthropic.com` can't be reached, the numbers stay old until it comes back.
+
+### An account says its limits are out of date or its sign-in expired
+
+Anchor reads limits with Claude Code's own login and never refreshes that login itself, because refreshing would replace the login Claude Code is using. A login that hasn't been used for a while expires, and Anchor then shows the last numbers Claude Code saved, marked as out of date. A 5-hour window that has reset since then reads as unused.
+
+To fix it, use the account once: start `claude` in a folder routed to it, or click **Sign in again** on the account. Then click refresh.
 
 ### A session is on the wrong account
 

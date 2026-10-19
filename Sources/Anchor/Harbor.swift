@@ -145,11 +145,12 @@ private struct HarborScrollCatcher: NSViewRepresentable {
     @State private var edge: Task<Void, Never>?
     @State private var edgeDir = 0
     @State private var selfCommit: String?
+    @State private var swell = false              // water moves briefly after the harbor appears
 
-    private static let height: CGFloat = 220
+    private static let height: CGFloat = 230
     private static let dy: CGFloat = 132           // anchor rest height
     private static let berthTop: CGFloat = 144
-    private static let berthH: CGFloat = 64
+    private static let berthH: CGFloat = 76
     private static let waterY: CGFloat = 66
 
     init(width: CGFloat = 316, onAdd: (() -> Void)? = nil) {
@@ -180,9 +181,11 @@ private struct HarborScrollCatcher: NSViewRepresentable {
 
         ZStack(alignment: .topLeading) {
             Clay.sky
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+            // Water moves only while the anchor does, or just after appearing: a pinned pop-out would
+            // otherwise redraw at 30 fps all day.
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || (pos == nil && !swell))) { tl in
                 let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
-                Canvas { ctx, _ in Self.drawSea(&ctx, width: width, t: t) }
+                Self.sea(width: width, t: t)
             }
             .allowsHitTesting(false)
 
@@ -226,6 +229,11 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         .onKeyPress(.leftArrow) { step(-1); return .handled }
         .onKeyPress(.rightArrow) { step(1); return .handled }
         .onAppear { if layout.mode == .scroll { panOverride = curPan(layout) } }
+        .task {
+            swell = true
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            swell = false
+        }
         .onDisappear { motion?.cancel(); edge?.cancel(); pos = nil; dragging = false; hotIdx = nil; edgeDir = 0 }
         .onChange(of: model.config.defaultID) { old, new in defaultChanged(from: old, to: new) }
         .accessibilityElement(children: .contain)
@@ -255,11 +263,10 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         return p
     }
 
-    private static func drawSea(_ ctx: inout GraphicsContext, width: CGFloat, t: Double) {
+    /// Shapes, not Canvas: the first Canvas on screen costs about 100 MB of graphics memory.
+    private static func sea(width: CGFloat, t: Double) -> some View {
         let d1 = -CGFloat((t / 7).truncatingRemainder(dividingBy: 1)) * 87
         let d2 = -CGFloat((t / 11).truncatingRemainder(dividingBy: 1)) * 87
-        ctx.fill(wave(base: waterY, amp: 7, dx: d1, width: width, bottom: height), with: .color(Clay.sea))
-        ctx.stroke(wave(base: waterY + 8, amp: 5, dx: d2, width: width, bottom: nil), with: .color(Clay.foam), lineWidth: 1.2)
         var bed = Path()
         bed.move(to: CGPoint(x: 0, y: 190))
         bed.addQuadCurve(to: CGPoint(x: width / 2, y: 186), control: CGPoint(x: width / 4, y: 178))
@@ -267,7 +274,12 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         bed.addLine(to: CGPoint(x: width, y: height))
         bed.addLine(to: CGPoint(x: 0, y: height))
         bed.closeSubpath()
-        ctx.fill(bed, with: .color(Clay.seabed))
+        return ZStack(alignment: .topLeading) {
+            wave(base: waterY, amp: 7, dx: d1, width: width, bottom: height).fill(Clay.sea)
+            wave(base: waterY + 8, amp: 5, dx: d2, width: width, bottom: nil).stroke(Clay.foam, lineWidth: 1.2)
+            bed.fill(Clay.seabed)
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
     }
 
     private var hull: some View {
@@ -309,12 +321,11 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         String(name.split(separator: " ").first ?? Substring(name))
     }
 
-    private func status(pct: Double?, fresh: Bool, on: Bool, roomy: Bool, countdown: String?) -> (text: String, color: Color) {
+    private func status(pct: Double?, fresh: Bool, on: Bool, roomy: Bool) -> (text: String, color: Color) {
         if fresh { return (roomy ? (on ? "Anchored · full 5h" : "Full 5h window") : "Full", Clay.fresh) }
         guard let p = pct else { return ("—", Color.secondary) }
         let n = Int(p.rounded())
         if on { return (roomy ? "Anchored · \(n)%" : "\(n)%", Clay.accentText) }
-        if roomy, let c = countdown { return ("\(n)% · ↻ \(c)", Clay.color(p)) }
         return ((roomy ? "5h " : "") + "\(n)%", Clay.color(p))
     }
 
@@ -324,8 +335,9 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         let hot = i == hotIdx
         let pct = model.limits[a.id]?.fiveHour?.percent
         let fresh = model.isFresh(a.id)
-        let countdown: String? = (pct ?? 0) >= 75 ? model.resetCountdown(a.id) : nil
-        let st = status(pct: pct, fresh: fresh, on: on, roomy: roomy, countdown: countdown)
+        // Every running window shows when it resets, so the next fresh account is visible before it happens.
+        let countdown: String? = fresh ? nil : model.resetCountdown(a.id)
+        let st = status(pct: pct, fresh: fresh, on: on, roomy: roomy)
         let lit = hot || on
         var label = "Anchor at \(a.name), "
         if fresh { label += "fresh 5-hour window" }
@@ -342,6 +354,10 @@ private struct HarborScrollCatcher: NSViewRepresentable {
                 Text(st.text)
                     .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(st.color)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Text(countdown.map { roomy ? "resets in \($0)" : "↻ \($0)" } ?? (fresh ? (roomy ? "ready now" : "") : " "))
+                    .font(.system(size: 9.5, weight: .medium).monospacedDigit())
+                    .foregroundStyle(fresh ? Clay.fresh : Color.secondary)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
             .padding(.horizontal, 4)

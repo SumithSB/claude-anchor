@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "anchor-core"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -50,7 +50,7 @@ dependencies = [
 
 [[package]]
 name = "anchor-tray"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anchor-core",
  "chrono",

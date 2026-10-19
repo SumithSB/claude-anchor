@@ -60,6 +60,8 @@ pub struct Config {
     pub floating_fade: bool,
     #[serde(default = "d_true", rename = "floatingAllSpaces")]
     pub floating_all_spaces: bool,
+    #[serde(default, rename = "showAPIPrices", skip_serializing_if = "Option::is_none")]
+    pub show_api_prices: Option<bool>, // None = on unless every account is on a flat-fee plan
     #[serde(default, rename = "floatingX", skip_serializing_if = "Option::is_none")]
     pub floating_x: Option<f64>,
     #[serde(default, rename = "floatingY", skip_serializing_if = "Option::is_none")]
