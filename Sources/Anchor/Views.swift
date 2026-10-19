@@ -462,6 +462,7 @@ private struct RoundedWindow: NSViewRepresentable {
         let rows = model.usageRows
         let total = rows.reduce(0) { $0 + $1.tokens }
         let cost = rows.reduce(0.0) { $0 + $1.cost }
+        let prices = model.showsAPIPrices
         let top = max(1, rows.map(\.tokens).max() ?? 1)
         let shown = showAllRows ? rows : Array(rows.prefix(4))
         return VStack(alignment: .leading, spacing: 10) {
@@ -474,11 +475,12 @@ private struct RoundedWindow: NSViewRepresentable {
             }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(compact(total)).font(.system(size: 28, weight: .light)).monospacedDigit()
-                Text("tokens · ≈" + String(format: "$%.2f", cost)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                Text(prices ? "tokens · ≈" + String(format: "$%.2f", cost) : "tokens")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Total usage")
-            .accessibilityValue("\(compact(total)) tokens, about \(String(format: "$%.2f", cost))")
+            .accessibilityValue(prices ? "\(compact(total)) tokens, about \(String(format: "$%.2f", cost)) at API prices" : "\(compact(total)) tokens")
             Seg(label: "Group by",
                 options: GroupBy.allCases.map { (label: $0.rawValue, value: $0) },
                 selection: Binding(get: { model.groupBy }, set: { model.groupBy = $0 }), fill: true)
@@ -487,7 +489,7 @@ private struct RoundedWindow: NSViewRepresentable {
                     .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
             } else {
                 VStack(spacing: 9) {
-                    ForEach(shown) { row($0, top: top) }
+                    ForEach(shown) { row($0, top: top, prices: prices) }
                 }
                 if rows.count > 4 {
                     Button { showAllRows.toggle() } label: {
@@ -497,22 +499,26 @@ private struct RoundedWindow: NSViewRepresentable {
                     .buttonStyle(.plain)
                     .accessibilityLabel(showAllRows ? "Show fewer usage rows" : "Show all \(rows.count) usage rows")
                 }
-                Text("≈ is the API price of this usage, not your bill.").font(.system(size: 11)).foregroundStyle(.secondary)
+                if prices {
+                    Text("≈ is the API price of this usage, not your bill.").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
         }
         .card(14)
     }
 
-    private func row(_ r: UsageRow, top: Int) -> some View {
+    private func row(_ r: UsageRow, top: Int, prices: Bool) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
                 if let id = r.accountID, let a = model.account(id) { FlagView(flag: a.flag, size: 11) }
                 Text(r.label).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
                 Text(compact(r.tokens)).monospacedDigit().fixedSize()
-                Text(String(format: "≈$%.2f", r.cost)).monospacedDigit().foregroundStyle(.secondary)
-                    .frame(width: 60, alignment: .trailing).fixedSize()
-                    .help("What this usage would cost at API prices. Your plan is a flat fee.")
+                if prices {
+                    Text(String(format: "≈$%.2f", r.cost)).monospacedDigit().foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing).fixedSize()
+                        .help("What this usage would cost at API prices.")
+                }
             }
             .font(.system(size: 12.5))
             Capsule().fill(Color.primary.opacity(0.07)).frame(height: 4)
@@ -524,7 +530,7 @@ private struct RoundedWindow: NSViewRepresentable {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(r.label)
-        .accessibilityValue("\(compact(r.tokens)) tokens, about \(String(format: "$%.2f", r.cost))")
+        .accessibilityValue(prices ? "\(compact(r.tokens)) tokens, about \(String(format: "$%.2f", r.cost))" : "\(compact(r.tokens)) tokens")
     }
 
     // MARK: navigation
@@ -600,30 +606,36 @@ private struct Ring: View {
             .card(compact ? 10 : 12, fill: Clay.fresh.opacity(0.10), stroke: Clay.fresh.opacity(0.30))
             .accessibilityElement(children: .combine)
         } else if !fresh.isEmpty {
-            let title = fresh.count == 1 ? "\(fresh[0].name) has a full 5-hour window" : "\(fresh.count) accounts have a full 5-hour window"
+            // One line of chips, not a button per account: three fresh accounts used to take a third of the menu.
+            let shown = Array(fresh.prefix(3))
             VStack(alignment: .leading, spacing: compact ? 6 : 8) {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(Clay.fresh)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 13)).foregroundStyle(Clay.fresh)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.system(size: 13, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                        Text("Anchor there to start on a clean slate.").font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    }
+                    Text("Full 5-hour window on").font(.system(size: 12.5, weight: .semibold))
+                    Spacer(minLength: 0)
+                    Text("Click to anchor").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(fresh.prefix(2))) { f in
+                HStack(spacing: 6) {
+                    ForEach(shown) { f in
                         Button { model.setDefault(f.id) } label: {
-                            HStack(spacing: 6) {
-                                FlagView(flag: f.flag, size: 10)
-                                Text("Anchor at \(f.name)").lineLimit(1).truncationMode(.tail)
+                            HStack(spacing: 5) {
+                                FlagView(flag: f.flag, size: 9)
+                                Text(f.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.tail)
                             }
+                            .foregroundStyle(Clay.freshInk)
+                            .padding(.horizontal, 9).frame(height: 24)
+                            .background(Clay.fresh, in: Capsule())
+                            .contentShape(Capsule())
                         }
-                        .buttonStyle(ClayButtonStyle(fill: Clay.fresh, ink: Clay.freshInk))
+                        .buttonStyle(.plain)
+                        .help("Anchor at \(f.name)")
                         .accessibilityLabel("Anchor at \(f.name)")
                     }
-                    if fresh.count > 2 {
-                        Text("+\(fresh.count - 2) more").font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    if fresh.count > shown.count {
+                        Text("+\(fresh.count - shown.count)").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 0)
                 }
             }
             .card(compact ? 10 : 12, fill: Clay.fresh.opacity(0.10), stroke: Clay.fresh.opacity(0.30))
@@ -662,7 +674,7 @@ private struct Ring: View {
             }
             .accessibilityElement(children: .combine)
             if let d = doneID, let t = model.account(d) {
-                doneRow(t, src: src, editor: s.editor)
+                doneRow(t, src: src, session: s)
             } else if targets.isEmpty {
                 Text("Add a second account to continue a conversation there when this one runs out.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -685,7 +697,7 @@ private struct Ring: View {
                 }
                 .buttonStyle(ClayButtonStyle())
                 .disabled(s.file == nil)
-                .help(s.editor ? "Anchors at \(sel.name). Reopen VS Code to pick the conversation up there."
+                .help(s.editor ? "Anchors at \(sel.name), then reopens the conversation in VS Code on it."
                                : "Opens in a new Terminal tab with the full history.")
                 .accessibilityLabel("Continue on \(sel.name)")
             }
@@ -699,15 +711,21 @@ private struct Ring: View {
         return model.limits[t.id]?.fiveHour.map { "\(Int($0.percent.rounded()))% used" } ?? ""
     }
 
-    private func doneRow(_ t: Account, src: Account?, editor: Bool) -> some View {
+    private func doneRow(_ t: Account, src: Account?, session s: LastSession) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Clay.fresh).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(editor ? "Anchored at \(t.name)." : "Reopened on \(t.name) in Terminal.")
+                Text(s.editor ? "Anchored at \(t.name)." : "Reopened on \(t.name) in Terminal.")
                     .font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                Text(editor ? "Quit and reopen VS Code, then open this conversation from its history. It continues on \(t.name)."
-                            : "Full history carried over. The old one stays on \(src?.name ?? "the original account").")
+                // A running tab keeps its account, so it has to close before the link can reopen it on the new one.
+                Text(s.editor ? "Close the conversation's tab in VS Code, then reopen it here. It continues on \(t.name) with its history."
+                              : "Full history carried over. The old one stays on \(src?.name ?? "the original account").")
                     .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if s.editor {
+                    Button("Reopen in VS Code") { model.reopenInEditor(s) }
+                        .controlSize(.small).padding(.top, 4)
+                        .accessibilityLabel("Reopen the conversation in VS Code on \(t.name)")
+                }
             }
             Spacer(minLength: 4)
             Button("Done") { doneID = nil }.controlSize(.small).accessibilityLabel("Done")
@@ -848,6 +866,9 @@ struct SwitchRow: View {
                 }
                 RowDivider()
                 SwitchRow("Notify when a window resets", isOn: Binding(get: { model.config.notifyFresh }, set: { model.config.notifyFresh = $0; model.save() }))
+            }
+            PaneSection(title: "Usage", footer: "What your usage would cost at Anthropic's API prices. Pro, Max and Team plans are a flat fee, so it's off for them unless you turn it on.") {
+                SwitchRow("Show API-price estimates", isOn: Binding(get: { model.showsAPIPrices }, set: { model.config.showAPIPrices = $0; model.save() }))
             }
             PaneSection(title: "Floating button") {
                 PaneRow(title: "Show floating button") {

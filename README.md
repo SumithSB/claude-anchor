@@ -18,6 +18,13 @@ The screenshots are taken from the current build. Dark mode, six accounts, first
 
 Unofficial and not affiliated with Anthropic. Free, MIT licensed. macOS 14+, Windows 10/11 (x64) and Linux (x86_64).
 
+## What's new in 0.5
+
+- **Reset times on every berth.** Each account shows when its 5-hour window resets ("resets in 1h 39m"), so you can see which account frees up next.
+- **No dollar figures on subscription plans.** Pro, Max and Team are a flat fee, so the Usage card shows tokens only. Turn on **Settings > Usage > Show API-price estimates** to see the API price. Estimates use current API prices, including Opus 5.5, Sonnet 5, Haiku 5.5 and 1-hour cache writes.
+- **Continue from VS Code and Cursor.** Continue anchors at the other account, then **Reopen in VS Code** brings the conversation back on it with its history.
+- **Lighter.** The pop-out uses about a quarter of the memory and a sixth of the CPU it did. One failed limits check no longer shows a warning, and limits from a window that has since reset read as unused.
+
 ## What's new in 0.4
 
 - **Windows and Linux.** A tray app with the same harbor switcher, limit rings, usage, last conversation card, Accounts, Rules and Settings panes, and floating button. Install with [`install.ps1`](#windows) or [`install.sh`](#linux).
@@ -181,9 +188,10 @@ The rings show the 5-hour and weekly limits. Teal means fine, amber starts at 75
 An account is **fresh** when its 5-hour window has reset and nothing has been used in the new window. A fresh account gives you a full window for free. This applies to the account you're on as well as the others. You'll see it in these places:
 
 - a teal FRESH badge on its berth,
-- in the menu, an "Anchor at <Name>" card when another account is fresh, or, when only the account you're on is fresh, a teal "<Name> has a full 5-hour window" card that says your limit just reset,
-- a teal glow and ↻ badge on the floating button,
-- a reset countdown on near-limit accounts, such as `92% · ↻ 22m`.
+- in the menu, a "Full 5-hour window on" card with a chip per fresh account (click one to anchor there; on Windows and Linux, an "Anchor at <Name>" button), or, when only the account you're on is fresh, a teal "<Name> has a full 5-hour window" card that says your limit just reset,
+- a teal glow and ↻ badge on the floating button.
+
+Every other berth shows when its 5-hour window resets, such as "resets in 1h 39m", so you can see which account frees up next.
 
 The app can also send a notification: "<Name>'s 5-hour window reset. Full window available." for another account, or "<Name>'s 5-hour window reset. You're on a full window." for the account you're on. Turn it off with the fresh-reset notification setting (`notifyFresh`).
 
@@ -203,7 +211,7 @@ The floating button is on by default. It is a 44 pt round button that starts at 
 
 - The ring shows the 5-hour usage of the default account.
 - A flag badge marks the account.
-- A pulsing teal glow and ↻ badge mean the account you're on, or another account, has a full 5-hour window.
+- A teal glow (it pulses a few times, then stays) and ↻ badge mean the account you're on, or another account, has a full 5-hour window.
 - A red badge means usage is 90% or more.
 
 Hover for a tooltip with the account and its usage (it adds "full 5h window" when the account you're on is fresh). Click it for a small glance card:
@@ -218,7 +226,7 @@ Its settings are listed in the [settings reference](#settings-reference).
 
 ### Continue a conversation
 
-The **Last conversation** card replaces the old Continue on menu. It shows the conversation's folder and one account menu, with fresh accounts first. Pick an account and click **Continue on <Name>**. The app copies the transcript to that account and resumes it in a new Terminal tab. A confirmation appears when it is done. For a conversation that ran in VS Code or Cursor (macOS), it makes that account the default instead: quit and reopen VS Code, then open the conversation from its history.
+The **Last conversation** card replaces the old Continue on menu. It shows the conversation's folder and one account menu, with fresh accounts first. Pick an account and click **Continue on <Name>**. The app copies the transcript to that account and resumes it in a new Terminal tab. A confirmation appears when it is done. For a conversation that ran in VS Code or Cursor (macOS), it makes that account the default instead: close the conversation's tab, then click **Reopen in VS Code**.
 
 A running session keeps its account. Continuing starts a new process under the other account.
 
@@ -260,6 +268,7 @@ Settings are in the app's **Settings** pane, in three cards: General, Limits and
 |---|---|---|---|
 | Refresh limits | `refreshSeconds` | 5 min | How often limits refresh: 30 s (Live), 1 min, 5 min, 15 min, or Manual only. `0` means manual. |
 | Fresh-reset notification | `notifyFresh` | On | Send a notification when an account's 5-hour window resets and is fresh, including the account you're on. |
+| API-price estimates | `showAPIPrices` | Off on Pro, Max and Team | Show what usage would cost at API prices in the Usage card. On by default only when an account has no subscription plan. |
 | Floating button | `floatingButton` | On | Show or hide the floating button. |
 | Snap to screen edges | `floatingSnap` | On | Snap the floating button to the screen edges. |
 | Fade when idle | `floatingFade` | Off | Fade the floating button when it is idle. |
@@ -334,7 +343,8 @@ Removes the app, the `.desktop` entries, the autostart entry, the shell hook lin
 
 - Unofficial; not affiliated with or endorsed by Anthropic.
 - Relies on undocumented Claude Code behaviour that may change: Keychain service naming, the `.credentials.json` location on Windows and Linux, the usage endpoint, and the transcript layout.
-- A running session can't change account. Claude Code picks its config dir and Keychain login once, at startup, and nothing outside the process can change that. Changing the default account or a folder rule affects new sessions only. To move a conversation, use **Continue on <Name>** in the Last conversation card, which copies the transcript and resumes it in a new process (in Terminal, or in VS Code after you reopen it). Running `/login` inside a session replaces that account's login; it doesn't switch accounts.
+- A running session can't change account. Claude Code picks its config dir and Keychain login once, at startup, and nothing outside the process can change that. Changing the default account or a folder rule affects new sessions only. To move a conversation, use **Continue on <Name>** in the Last conversation card, which copies the transcript and resumes it in a new process (in Terminal, or in a reopened VS Code tab). Running `/login` inside a session replaces that account's login; it doesn't switch accounts.
+- Accounts are picked per folder, so two VS Code windows on the same folder always use the same account. VS Code's Claude settings are machine-wide, so there's no per-window override. To work on one repo with two accounts, open a [git worktree](https://git-scm.com/docs/git-worktree) of it in the second window and add a folder rule for the worktree's path.
 - Ad-hoc signed, not notarized. The installer clears the quarantine flag; a manually downloaded zip may need right-click, Open.
 - Windows and Linux builds are unsigned, and are newer than the macOS app. Please report tray, window placement or terminal problems as issues.
 

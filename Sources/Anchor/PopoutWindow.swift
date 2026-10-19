@@ -17,7 +17,7 @@ import AppKit
     func show(_ model: AppModel) {
         if let w = window { w.orderFrontRegardless(); return }
         let w = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 520),
-                        styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
+                        styleMask: [.titled, .closable, .miniaturizable, .resizable, .nonactivatingPanel],
                         backing: .buffered, defer: false)
         w.title = "Claude Anchor"
         w.isFloatingPanel = true

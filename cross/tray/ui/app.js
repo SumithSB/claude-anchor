@@ -58,6 +58,7 @@ const abbreviate = (p) => {
   return (win ? p.toLowerCase().startsWith(h.toLowerCase()) : p.startsWith(h)) ? "~" + p.slice(h.length) : p;
 };
 const compact = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(n));
+const showsAPIPrices = () => state.config.showAPIPrices ?? accounts().some((a) => !a.pending && !a.plan);
 const usd = (c) => "$" + c.toFixed(2);
 const resetAt = (w) => (w?.resetsAt ? Date.parse(w.resetsAt) : NaN);
 
@@ -71,7 +72,7 @@ function resetText(w) {
 }
 function countdown(id) {
   const w = state.limits[id]?.fiveHour, t = resetAt(w);
-  if (!w || w.percent < 75 || isNaN(t)) return null;
+  if (!w || isNaN(t)) return null;
   const secs = (t - Date.now()) / 1000;
   if (secs <= 0) return null;
   const mins = Math.ceil(secs / 60), h = Math.floor(mins / 60), m = mins % 60;
@@ -206,17 +207,17 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 function usageCard() {
   const rows = state.usageRows || [];
   const total = rows.reduce((s, r) => s + r.tokens, 0), cost = rows.reduce((s, r) => s + r.cost, 0), top = Math.max(1, ...rows.map((r) => r.tokens));
-  const shown = ui.showAll ? rows : rows.slice(0, 4);
+  const shown = ui.showAll ? rows : rows.slice(0, 4), prices = showsAPIPrices();
   return `<div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row">${caption("Usage")}<div class="sp"></div>${seg("Range", [["Today", 1], ["7 days", 7], ["30 days", 30]], state.rangeDays, "rangeDays")}</div>
-    <div class="row" style="align-items:baseline;gap:6px" role="group" aria-label="Total usage: ${compact(total)} tokens, about ${usd(cost)}"><span class="big">${compact(total)}</span><span class="muted trunc" style="font-size:12px">tokens · ≈${usd(cost)}</span></div>
+    <div class="row" style="align-items:baseline;gap:6px" role="group" aria-label="Total usage: ${compact(total)} tokens${prices ? `, about ${usd(cost)}` : ""}"><span class="big">${compact(total)}</span><span class="muted trunc" style="font-size:12px">tokens${prices ? ` · ≈${usd(cost)}` : ""}</span></div>
     ${seg("Group by", [["Account", "account"], ["Project", "project"], ["Model", "model"]], state.groupBy, "groupBy", true)}
     ${rows.length ? `<div style="display:flex;flex-direction:column;gap:9px">${shown.map((r) => {
       const a = r.accountID && account(r.accountID);
-      return `<div class="urow" role="group" aria-label="${esc(r.label)}: ${compact(r.tokens)} tokens, about ${usd(r.cost)}"><div class="top">${a ? flag(a.flag, 11) : ""}<span class="trunc sp" title="${esc(r.label)}">${esc(r.label)}</span><span class="num">${compact(r.tokens)}</span><span class="num cost" title="What this usage would cost at API prices. Your plan is a flat fee.">≈${usd(r.cost)}</span></div><div class="bar"><i style="width:max(3px,${(r.tokens / top) * 100}%)"></i></div></div>`;
+      return `<div class="urow" role="group" aria-label="${esc(r.label)}: ${compact(r.tokens)} tokens${prices ? `, about ${usd(r.cost)}` : ""}"><div class="top">${a ? flag(a.flag, 11) : ""}<span class="trunc sp" title="${esc(r.label)}">${esc(r.label)}</span><span class="num">${compact(r.tokens)}</span>${prices ? `<span class="num cost" title="What this usage would cost at API prices.">≈${usd(r.cost)}</span>` : ""}</div><div class="bar"><i style="width:max(3px,${(r.tokens / top) * 100}%)"></i></div></div>`;
     }).join("")}</div>
     ${rows.length > 4 ? `<button class="link" style="text-align:center;height:24px;width:100%" data-a="showAll">${ui.showAll ? "Show fewer" : `Show all ${rows.length}`}</button>` : ""}
-    <div class="muted" style="font-size:11px">≈ is the API price of this usage, not your bill.</div>` : `<div class="muted" style="min-height:40px">No Claude Code usage yet in this range.</div>`}</div>`;
+    ${prices ? `<div class="muted" style="font-size:11px">≈ is the API price of this usage, not your bill.</div>` : ""}` : `<div class="muted" style="min-height:40px">No Claude Code usage yet in this range.</div>`}</div>`;
 }
 
 function continueCard() {
@@ -305,6 +306,9 @@ function settingsPane() {
       prow("Refresh limits", `<select class="sel" data-c="refresh" aria-label="Refresh limits">${opts.map(([v, l]) => `<option value="${v}" ${c.refreshSeconds === v ? "selected" : ""}>${l}</option>`).join("")}</select>`) +
       prow("Notify when a window resets", sw(c.notifyFresh, "set:notifyFresh", "Notify when a window resets")),
       "Live uses more of Anthropic's API. Use Refresh in the header any time.") +
+    section("Usage",
+      prow("Show API-price estimates", sw(showsAPIPrices(), "set:showAPIPrices", "Show API-price estimates")),
+      "What your usage would cost at Anthropic's API prices. Pro, Max and Team plans are a flat fee, so it's off for them unless you turn it on.") +
     section("Floating button",
       prow("Show floating button", (wl ? "" : kbd) + sw(c.floatingButton && !wl, "set:floatingButton", "Show floating button", wl)) +
       prow("Snap to screen edges", sw(c.floatingSnap, "set:floatingSnap", "Snap to screen edges", wl)) +

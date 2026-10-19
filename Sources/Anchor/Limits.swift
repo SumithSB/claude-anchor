@@ -38,6 +38,17 @@ extension AppModel {
         return p
     }
 
+    /// Old numbers whose window has since reset would overstate usage: a passed reset means nothing used yet.
+    nonisolated static func aged(_ l: Limits, now: Date) -> Limits {
+        func age(_ w: LimitWindow?) -> LimitWindow? {
+            guard let w, let at = w.resetsAt, at <= now else { return w }
+            return LimitWindow(percent: 0, resetsAt: nil)
+        }
+        var l = l
+        l.fiveHour = age(l.fiveHour); l.weekly = age(l.weekly)
+        return l
+    }
+
     nonisolated static let offlineNote = "Couldn't reach Anthropic. Showing the last known usage."
 
     /// Live fetch with the CLI's own access token. Never refreshes it (that would rotate the refresh token).
@@ -72,14 +83,14 @@ extension AppModel {
         }
         if unreachable, let p = keptQuietly(previous, now: now) { return p }
         if unreachable, let p = previous, p.error == nil, p.fiveHour != nil || p.weekly != nil {
-            var l = p
+            var l = aged(p, now: now)
             l.stale = true; l.note = offlineNote
             return l
         }
         if let c = claudeJSON(for: a)["cachedUsageUtilization"] as? [String: Any],
            let u = c["utilization"] as? [String: Any] {
             let at = Date(timeIntervalSince1970: ((c["fetchedAtMs"] as? NSNumber)?.doubleValue ?? 0) / 1000)
-            var l = parseLimits(u, fetchedAt: at, stale: true)
+            var l = aged(parseLimits(u, fetchedAt: at, stale: true), now: now)
             if now.timeIntervalSince(at) > 6 * 3600 { l.error = "\(a.name)'s limits are out of date." }
             else if unreachable { l.note = offlineNote }
             return l
@@ -104,6 +115,10 @@ extension AppModel {
         assert(keptQuietly(failed, now: now) == nil && keptQuietly(nil, now: now) == nil)
         let empty = Limits(fiveHour: nil, weekly: nil, fetchedAt: now)
         assert(keptQuietly(empty, now: now) == nil)
+        let old = Limits(fiveHour: LimitWindow(percent: 56, resetsAt: now.addingTimeInterval(-60)),
+                         weekly: LimitWindow(percent: 23, resetsAt: now.addingTimeInterval(3600)), fetchedAt: now, stale: true)
+        let ag = aged(old, now: now)
+        assert(ag.fiveHour == LimitWindow(percent: 0, resetsAt: nil) && ag.weekly == old.weekly, "a passed reset reads as unused")
         var c = Config()
         c.defaultID = "d"
         c.rules = [Rule(path: "/w", accountID: "a"), Rule(path: "/w/x", accountID: "b", allowOverflow: true)]
@@ -179,9 +194,9 @@ extension AppModel {
     /// The default account itself has a full, unused 5h window (it just reset).
     var activeIsFresh: Bool { active.map { isFresh($0.id) } ?? false }
 
-    /// Short time until the 5h window resets ("22m", "1h 39m"), only once it is at least 75% used.
+    /// Short time until the 5h window resets ("22m", "1h 39m"); nil when no window is running.
     func resetCountdown(_ id: String) -> String? {
-        guard let w = limits[id]?.fiveHour, w.percent >= 75, let at = w.resetsAt else { return nil }
+        guard let w = limits[id]?.fiveHour, let at = w.resetsAt else { return nil }
         let secs = at.timeIntervalSinceNow
         guard secs > 0 else { return nil }
         let mins = (Int(secs) + 59) / 60

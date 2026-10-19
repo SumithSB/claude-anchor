@@ -58,6 +58,7 @@ struct Config: Codable {
     var floatingAllSpaces: Bool = true        // show on every Space and over full-screen apps
     var floatingX: Double?                    // last position, screen points (bottom-left origin)
     var floatingY: Double?
+    var showAPIPrices: Bool?                  // nil: only when an account pays per token (no subscription plan)
 }
 
 extension Config {
@@ -80,6 +81,7 @@ extension Config {
         floatingAllSpaces = try c.decodeIfPresent(Bool.self, forKey: .floatingAllSpaces) ?? true
         floatingX = try c.decodeIfPresent(Double.self, forKey: .floatingX)
         floatingY = try c.decodeIfPresent(Double.self, forKey: .floatingY)
+        showAPIPrices = try c.decodeIfPresent(Bool.self, forKey: .showAPIPrices)
     }
 }
 
@@ -146,6 +148,9 @@ final class AppModel {
     var accounts: [Account] { config.accounts }
     var active: Account? { config.accounts.first { $0.id == config.defaultID } ?? config.accounts.first }
     func account(_ id: String) -> Account? { config.accounts.first { $0.id == id } }
+
+    /// Dollar estimates mean something only at API rates; on a subscription they read like a bill nobody pays.
+    var showsAPIPrices: Bool { config.showAPIPrices ?? accounts.contains { !$0.pending && $0.plan == nil } }
 
     func refreshRows() {
         usageRows = usage.rows(by: groupBy, days: rangeDays, accounts: config.accounts, removed: config.removedNames)

@@ -186,17 +186,18 @@ svg { display: block; flex: none; }
 .toast { position: absolute; z-index: 70; left: 16px; right: 16px; bottom: 56px; background: var(--text); color: var(--paper); padding: 8px 12px; border-radius: 10px; font-size: 12px; box-shadow: var(--shadow); }
 
 /* ---------- harbor ---------- */
-.harbor { position: relative; width: 308px; height: 220px; margin: 0 auto; border-radius: 18px; overflow: hidden; background: var(--sky); border: 1px solid var(--hairline); touch-action: none; }
+.harbor { position: relative; width: 308px; height: 230px; margin: 0 auto; border-radius: 18px; overflow: hidden; background: var(--sky); border: 1px solid var(--hairline); touch-action: none; }
 .harbor:focus-visible { outline: none; border: 2px solid var(--accent); }
 .harbor .sea { position: absolute; inset: 0; pointer-events: none; }
 .harbor .waves1 { animation: drift 7s linear infinite; }
 .harbor .waves2 { animation: drift 11s linear infinite; }
 @keyframes drift { to { transform: translateX(-87px); } }
 .quay { position: absolute; inset: 0; will-change: transform; }
-.berth { position: absolute; top: 144px; height: 64px; border-radius: 13px; background: var(--surface); border: 1px solid var(--hairline); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0 2px; text-align: center; transition: box-shadow .15s, border-color .15s, background .15s; }
+.berth { position: absolute; top: 144px; height: 76px; border-radius: 13px; background: var(--surface); border: 1px solid var(--hairline); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0 2px; text-align: center; transition: box-shadow .15s, border-color .15s, background .15s; }
 .berth .nm { font-size: 12.5px; font-weight: 600; max-width: 100%; }
 .berth.compact .nm { font-size: 11px; }
 .berth .st { font-size: 10px; letter-spacing: -.1px; font-weight: 600; font-variant-numeric: tabular-nums; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.berth .sub { font-size: 9.5px; font-weight: 500; font-variant-numeric: tabular-nums; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .berth.lit { border-color: var(--accent); background: linear-gradient(color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)), var(--surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .berth.hot { border-width: 1.5px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent), 0 0 11px color-mix(in srgb, var(--accent) 30%, transparent); }
 .berth .badge { position: absolute; top: -9px; right: -7px; background: var(--fresh); color: var(--fresh-ink); font-size: 9px; font-weight: 800; letter-spacing: .5px; padding: 0 6px; height: 15px; line-height: 15px; border-radius: 99px; box-shadow: 0 0 0 2px var(--sea); }

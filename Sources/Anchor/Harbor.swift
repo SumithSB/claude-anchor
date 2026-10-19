@@ -147,10 +147,10 @@ private struct HarborScrollCatcher: NSViewRepresentable {
     @State private var selfCommit: String?
     @State private var swell = false              // water moves briefly after the harbor appears
 
-    private static let height: CGFloat = 220
+    private static let height: CGFloat = 230
     private static let dy: CGFloat = 132           // anchor rest height
     private static let berthTop: CGFloat = 144
-    private static let berthH: CGFloat = 64
+    private static let berthH: CGFloat = 76
     private static let waterY: CGFloat = 66
 
     init(width: CGFloat = 316, onAdd: (() -> Void)? = nil) {
@@ -321,12 +321,11 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         String(name.split(separator: " ").first ?? Substring(name))
     }
 
-    private func status(pct: Double?, fresh: Bool, on: Bool, roomy: Bool, countdown: String?) -> (text: String, color: Color) {
+    private func status(pct: Double?, fresh: Bool, on: Bool, roomy: Bool) -> (text: String, color: Color) {
         if fresh { return (roomy ? (on ? "Anchored · full 5h" : "Full 5h window") : "Full", Clay.fresh) }
         guard let p = pct else { return ("—", Color.secondary) }
         let n = Int(p.rounded())
         if on { return (roomy ? "Anchored · \(n)%" : "\(n)%", Clay.accentText) }
-        if roomy, let c = countdown { return ("\(n)% · ↻ \(c)", Clay.color(p)) }
         return ((roomy ? "5h " : "") + "\(n)%", Clay.color(p))
     }
 
@@ -336,8 +335,9 @@ private struct HarborScrollCatcher: NSViewRepresentable {
         let hot = i == hotIdx
         let pct = model.limits[a.id]?.fiveHour?.percent
         let fresh = model.isFresh(a.id)
-        let countdown: String? = (pct ?? 0) >= 75 ? model.resetCountdown(a.id) : nil
-        let st = status(pct: pct, fresh: fresh, on: on, roomy: roomy, countdown: countdown)
+        // Every running window shows when it resets, so the next fresh account is visible before it happens.
+        let countdown: String? = fresh ? nil : model.resetCountdown(a.id)
+        let st = status(pct: pct, fresh: fresh, on: on, roomy: roomy)
         let lit = hot || on
         var label = "Anchor at \(a.name), "
         if fresh { label += "fresh 5-hour window" }
@@ -354,6 +354,10 @@ private struct HarborScrollCatcher: NSViewRepresentable {
                 Text(st.text)
                     .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(st.color)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Text(countdown.map { roomy ? "resets in \($0)" : "↻ \($0)" } ?? (fresh ? (roomy ? "ready now" : "") : " "))
+                    .font(.system(size: 9.5, weight: .medium).monospacedDigit())
+                    .foregroundStyle(fresh ? Clay.fresh : Color.secondary)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
             .padding(.horizontal, 4)

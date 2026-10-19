@@ -10,9 +10,12 @@ final class UsageIndex: @unchecked Sendable {
         var files: [String: FileState] = [:]
         var recent: [String] = []          // last dedup keys, so a rescan after truncation doesn't double count
         var last: Last?
+        var pricing: Int?                  // price table the stored costs were computed with
     }
     private struct Rec { var key: String, day: String, cwd: String, model: String, ts: Double, editor: Bool
-                         var input: Int, output: Int, cacheRead: Int, cacheWrite: Int }
+                         var input: Int, output: Int, cacheRead: Int, cacheWrite: Int, cacheWrite1h: Int }
+
+    private static let pricingVersion = 2
 
     private static let sep = "\u{1F}"
     private static let maxRecent = 5000
@@ -67,17 +70,42 @@ final class UsageIndex: @unchecked Sendable {
         self.storePath = storePath
         if let d = FileManager.default.contents(atPath: storePath),
            let s = try? JSONDecoder().decode(State.self, from: d) { state = s; seen = Set(s.recent) }
+        if state.pricing != Self.pricingVersion {   // costs from an older price table: re-price the stored tokens
+            for (k, a) in state.agg {
+                let model = k.components(separatedBy: Self.sep).last ?? ""
+                // The split by cache duration wasn't kept; Claude Code writes with the 1-hour TTL.
+                state.agg[k]?.cost = Self.cost(model: model, input: a.input, output: a.output, cacheRead: a.cacheRead,
+                                               cacheWrite5m: 0, cacheWrite1h: a.cacheWrite)
+            }
+            state.pricing = Self.pricingVersion
+            dirty = true
+        }
     }
 
     // MARK: pricing / labels
 
-    // ponytail: estimate table (USD per million tokens), update when pricing changes.
-    static func price(_ model: String) -> (input: Double, output: Double) {
-        let m = model.lowercased()
-        if m.contains("opus") { return m.contains("opus-4-5") || m.contains("opus-5") ? (5, 25) : (15, 75) }
-        if m.contains("fable") { return (5, 25) }
-        if m.contains("haiku") { return (1, 5) }
-        return (3, 15)
+    /// First-party API list prices, USD per million tokens: input, output, cache read. Cache writes are
+    /// 1.25x input (5-minute TTL) or 2x (1-hour). `prompt` is the request's whole input, for Haiku 5.5's tier.
+    // ponytail: hand-kept table (Oct 2026); bump pricingVersion when it changes so stored costs are re-priced.
+    static func price(_ model: String, prompt: Int = 0) -> (input: Double, output: Double, read: Double) {
+        var m = model.lowercased()
+        if let b = m.firstIndex(of: "[") { m = String(m[..<b]) }   // "claude-opus-5-5[1m]"
+        func has(_ p: String) -> Bool { m.hasPrefix("claude-" + p) }
+        if has("fable-5-1") || has("mythos-5-1") { return (10, 50, 0.25) }
+        if has("fable") || has("mythos") { return (10, 50, 1) }
+        if has("opus-5-5") { return (4, 20, 0.2) }
+        if has("opus-5") || ["4-8", "4-7", "4-6", "4-5"].contains(where: { has("opus-" + $0) }) { return (5, 25, 0.5) }
+        if m.contains("opus") { return (15, 75, 1.5) }
+        if has("sonnet-5") { return (2, 10, 0.2) }
+        if has("haiku-5-5") { return prompt > 100_000 ? (0.5, 2.5, 0.05) : (0.1, 0.5, 0.01) }
+        if m.contains("haiku") { return (1, 5, 0.1) }
+        return (3, 15, 0.3)   // Sonnet 4.x, and anything unrecognised
+    }
+
+    static func cost(model: String, input: Int, output: Int, cacheRead: Int, cacheWrite5m: Int, cacheWrite1h: Int) -> Double {
+        let p = price(model, prompt: input + cacheRead + cacheWrite5m + cacheWrite1h)
+        return (Double(input) * p.input + Double(output) * p.output + Double(cacheRead) * p.read
+                + Double(cacheWrite5m) * p.input * 1.25 + Double(cacheWrite1h) * p.input * 2) / 1e6
     }
 
     static func prettyModel(_ id: String) -> String {
@@ -180,11 +208,13 @@ final class UsageIndex: @unchecked Sendable {
         else { return nil }
         let model = msg["model"] as? String ?? "unknown"
         func n(_ k: String) -> Int { (u[k] as? NSNumber)?.intValue ?? 0 }
+        let write = n("cache_creation_input_tokens")
+        let write1h = ((u["cache_creation"] as? [String: Any])?["ephemeral_1h_input_tokens"] as? NSNumber)?.intValue ?? 0
         let key = model == "<synthetic>" ? "" : "\(msg["id"] as? String ?? "")|\(o["requestId"] as? String ?? "")"
         return Rec(key: key, day: dayFmt.string(from: date), cwd: cwd, model: model, ts: date.timeIntervalSince1970,
                    editor: o["entrypoint"] as? String == "claude-vscode",   // Cursor runs the same extension
                     input: n("input_tokens"), output: n("output_tokens"),
-                    cacheRead: n("cache_read_input_tokens"), cacheWrite: n("cache_creation_input_tokens"))
+                    cacheRead: n("cache_read_input_tokens"), cacheWrite: write, cacheWrite1h: min(write1h, write))
     }
 
     private func apply(_ r: Rec, acct: String, file: String) {   // lock held
@@ -195,9 +225,8 @@ final class UsageIndex: @unchecked Sendable {
             state.recent.removeFirst(state.recent.count - Self.maxRecent)
             seen = Set(state.recent)
         }
-        let p = Self.price(r.model)
-        let cost = (Double(r.input) * p.input + Double(r.output) * p.output
-                    + Double(r.cacheRead) * p.input * 0.1 + Double(r.cacheWrite) * p.input * 1.25) / 1e6
+        let cost = Self.cost(model: r.model, input: r.input, output: r.output, cacheRead: r.cacheRead,
+                             cacheWrite5m: r.cacheWrite - r.cacheWrite1h, cacheWrite1h: r.cacheWrite1h)
         let k = [r.day, acct, r.cwd, r.model].joined(separator: Self.sep)
         var a = state.agg[k] ?? Agg()
         a.input += r.input; a.output += r.output; a.cacheRead += r.cacheRead; a.cacheWrite += r.cacheWrite; a.cost += cost
@@ -292,7 +321,8 @@ final class UsageIndex: @unchecked Sendable {
         var t = total()
         assert(t.0 == 1133 && t.1 == 22, "dedup/totals: \(t)")
         let opus = ix.rows(by: .model, days: 1, accounts: [acct], removed: [:]).first { $0.label == "Opus 5.5" }
-        assert(abs((opus?.cost ?? 0) - 0.00685) < 1e-9, "cost")
+        // Opus 5.5: $4 in, $20 out, $0.20 cache read, 5-minute writes at 1.25x input.
+        assert(abs((opus?.cost ?? 0) - (10 * 4 + 20 * 20 + 100 * 0.2 + 1000 * 4 * 1.25) / 1e6) < 1e-12, "cost")
         assert(ix.lastSession?.cwd == "/w/x" && ix.lastSession?.accountID == "t" && ix.lastSession?.editor == false)
         let store = tmp + "/store/usage.json"
         let m0 = (try? FileManager.default.attributesOfItem(atPath: store)[.modificationDate]) as? Date
@@ -319,6 +349,32 @@ final class UsageIndex: @unchecked Sendable {
         assert(r2.first?.tokens == 1143 && r2.first?.label == "T" && r2.first?.accountID == "t", "persist")
         ix2.purge(accountID: "t")
         assert(ix2.rows(by: .account, days: 1, accounts: [acct], removed: [:]).isEmpty)
+        // Pricing: 1-hour writes at 2x, per-model cache reads, Haiku 5.5's long-prompt tier, the [1m] suffix.
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-12 }
+        assert(near(cost(model: "claude-opus-5-5[1m]", input: 0, output: 0, cacheRead: 1_000_000, cacheWrite5m: 0, cacheWrite1h: 1_000_000), 0.2 + 8))
+        assert(near(cost(model: "claude-fable-5-1", input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite5m: 0, cacheWrite1h: 0), 10 + 50 + 0.25))
+        assert(near(cost(model: "claude-fable-5", input: 0, output: 0, cacheRead: 1_000_000, cacheWrite5m: 0, cacheWrite1h: 0), 1))
+        assert(near(cost(model: "claude-sonnet-5-5", input: 1_000_000, output: 1_000_000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0), 12))
+        assert(near(cost(model: "claude-sonnet-4-6", input: 1_000_000, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0), 3))
+        assert(near(cost(model: "claude-opus-4-8", input: 1_000_000, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0), 5))
+        assert(near(cost(model: "claude-haiku-5-5", input: 100_000, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0), 0.01))
+        assert(near(cost(model: "claude-haiku-5-5", input: 100_001, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0), 100_001 * 0.5 / 1e6))
+
+        // A transcript line with a 1-hour write is priced by its split.
+        let h3 = FileHandle(forWritingAtPath: file)!
+        let oneH = line("5", "claude-sonnet-5-5", 0, 0, 0, 1000)
+            .replacingOccurrences(of: #""output_tokens":0}"#, with: #""output_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":400,"ephemeral_1h_input_tokens":600}}"#)
+        h3.seekToEndOfFile(); h3.write((oneH + "\n").data(using: .utf8)!); try? h3.close()
+        ix.scan(accounts: [acct])
+        let son = ix.rows(by: .model, days: 1, accounts: [acct], removed: [:]).first { $0.label == "Sonnet 5.5" }
+        assert(near(son?.cost ?? 0, (400 * 2 * 1.25 + 600 * 2 * 2) / 1e6), "1h split: \(son?.cost ?? -1)")
+
+        // Costs stored under an older table are re-priced on load (writes taken as 1-hour, Claude Code's TTL).
+        let old = tmp + "/old.json"
+        try? #"{"agg":{"2026-10-01\u001ft\u001f/w\u001fclaude-opus-5-5":{"input":0,"output":1000000,"cacheRead":1000000,"cacheWrite":1000000,"cost":999}},"files":{},"recent":[]}"#
+            .write(toFile: old, atomically: true, encoding: .utf8)
+        let rep = UsageIndex(storePath: old).rows(by: .model, days: 400, accounts: [acct], removed: [:])
+        assert(rep.count == 1 && near(rep[0].cost, 20 + 0.2 + 8), "re-priced: \(rep)")
         print("Usage selfTest OK")
     }
 }

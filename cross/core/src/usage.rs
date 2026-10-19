@@ -37,6 +37,8 @@ const KEEP_DAYS: i64 = 90;
 #[derive(Default, Serialize, Deserialize)]
 struct Agg { input: u64, output: u64, cache_read: u64, cache_write: u64, cost: f64 }
 
+const PRICING_VERSION: i32 = 2;
+
 #[derive(Clone, Serialize, Deserialize)]
 struct FileState { offset: u64, size: u64, inode: u64 }
 
@@ -49,12 +51,14 @@ struct State {
     files: HashMap<String, FileState>,
     recent: Vec<String>, // last dedup keys, so a rescan after truncation doesn't double count
     last: Option<Last>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pricing: Option<i32>, // price table the stored costs were computed with
 }
 
 #[derive(Default)]
 struct Inner { state: State, seen: HashSet<String> }
 
-struct Rec { key: String, day: String, cwd: String, model: String, ts: f64, input: u64, output: u64, cache_read: u64, cache_write: u64 }
+struct Rec { key: String, day: String, cwd: String, model: String, ts: f64, input: u64, output: u64, cache_read: u64, cache_write: u64, cache_write_1h: u64 }
 
 pub struct UsageIndex { store: PathBuf, ledger: PathBuf, inner: Mutex<Inner>, gate: Mutex<()> }
 
@@ -87,6 +91,8 @@ fn parse(line: &[u8]) -> Option<Rec> {
     let u = msg.get("usage")?.as_object()?;
     let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown");
     let n = |k: &str| u.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+    let write = n("cache_creation_input_tokens");
+    let write_1h = u.get("cache_creation").and_then(|c| c["ephemeral_1h_input_tokens"].as_u64()).unwrap_or(0);
     let key = if model == "<synthetic>" { String::new() } else {
         format!("{}|{}", msg.get("id").and_then(|v| v.as_str()).unwrap_or(""), o["requestId"].as_str().unwrap_or(""))
     };
@@ -94,7 +100,7 @@ fn parse(line: &[u8]) -> Option<Rec> {
         key, day: day_of(date.with_timezone(&chrono::Local)), cwd: cwd.into(), model: model.into(),
         ts: date.timestamp_millis() as f64 / 1000.0,
         input: n("input_tokens"), output: n("output_tokens"),
-        cache_read: n("cache_read_input_tokens"), cache_write: n("cache_creation_input_tokens"),
+        cache_read: n("cache_read_input_tokens"), cache_write: write, cache_write_1h: write_1h.min(write),
     })
 }
 
@@ -110,8 +116,7 @@ impl Inner {
             self.state.recent.drain(..drop);
             self.seen = self.state.recent.iter().cloned().collect();
         }
-        let (pi, po) = UsageIndex::price(&r.model);
-        let cost = (r.input as f64 * pi + r.output as f64 * po + r.cache_read as f64 * pi * 0.1 + r.cache_write as f64 * pi * 1.25) / 1e6;
+        let cost = UsageIndex::cost(&r.model, r.input, r.output, r.cache_read, r.cache_write - r.cache_write_1h, r.cache_write_1h);
         let a = self.state.agg.entry([r.day.as_str(), acct, &r.cwd, &r.model].join(&SEP.to_string())).or_default();
         a.input += r.input; a.output += r.output; a.cache_read += r.cache_read; a.cache_write += r.cache_write; a.cost += cost;
     }
@@ -121,6 +126,13 @@ impl UsageIndex {
     /// Loads state from `store` (usage.json); `ledger` is the `copied` file written by sync.
     pub fn open(store: PathBuf, ledger: PathBuf) -> Self {
         let state: State = std::fs::read(&store).ok().and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default();
+        let mut state = state;
+        if state.pricing != Some(PRICING_VERSION) { // costs from an older price table: re-price the stored tokens
+            for (k, a) in state.agg.iter_mut() { // the cache-duration split wasn't kept; Claude Code writes with the 1-hour TTL
+                a.cost = Self::cost(k.rsplit(SEP).next().unwrap_or(""), a.input, a.output, a.cache_read, 0, a.cache_write);
+            }
+            state.pricing = Some(PRICING_VERSION);
+        }
         let seen = state.recent.iter().cloned().collect();
         UsageIndex { store, ledger, inner: Mutex::new(Inner { state, seen }), gate: Mutex::new(()) }
     }
@@ -238,13 +250,27 @@ impl UsageIndex {
         self.lock().state.files.insert(path.to_string_lossy().into_owned(), FileState { offset: size, size, inode: file_id(&m) });
     }
 
-    // ponytail: estimate table (USD per million tokens), update when pricing changes.
-    pub fn price(model: &str) -> (f64, f64) {
-        let m = model.to_lowercase();
-        if m.contains("opus") { return if m.contains("opus-4-5") || m.contains("opus-5") { (5.0, 25.0) } else { (15.0, 75.0) } }
-        if m.contains("fable") { return (5.0, 25.0) }
-        if m.contains("haiku") { return (1.0, 5.0) }
-        (3.0, 15.0)
+    /// First-party API list prices, USD per million tokens: input, output, cache read. Cache writes are 1.25x input
+    /// (5-minute TTL) or 2x (1-hour). `prompt` is the request's whole input, for Haiku 5.5's tier.
+    // ponytail: hand-kept table (Oct 2026); bump PRICING_VERSION when it changes so stored costs are re-priced.
+    pub fn price(model: &str, prompt: u64) -> (f64, f64, f64) {
+        let lower = model.to_lowercase();
+        let m = lower.split('[').next().unwrap_or("");
+        let has = |p: &str| m.starts_with(&format!("claude-{p}"));
+        if has("fable-5-1") || has("mythos-5-1") { return (10.0, 50.0, 0.25) }
+        if has("fable") || has("mythos") { return (10.0, 50.0, 1.0) }
+        if has("opus-5-5") { return (4.0, 20.0, 0.2) }
+        if has("opus-5") || ["4-8", "4-7", "4-6", "4-5"].iter().any(|v| has(&format!("opus-{v}"))) { return (5.0, 25.0, 0.5) }
+        if m.contains("opus") { return (15.0, 75.0, 1.5) }
+        if has("sonnet-5") { return (2.0, 10.0, 0.2) }
+        if has("haiku-5-5") { return if prompt > 100_000 { (0.5, 2.5, 0.05) } else { (0.1, 0.5, 0.01) } }
+        if m.contains("haiku") { return (1.0, 5.0, 0.1) }
+        (3.0, 15.0, 0.3) // Sonnet 4.x, and anything unrecognised
+    }
+
+    pub fn cost(model: &str, input: u64, output: u64, cache_read: u64, write_5m: u64, write_1h: u64) -> f64 {
+        let (pi, po, pr) = Self::price(model, input + cache_read + write_5m + write_1h);
+        (input as f64 * pi + output as f64 * po + cache_read as f64 * pr + write_5m as f64 * pi * 1.25 + write_1h as f64 * pi * 2.0) / 1e6
     }
 
     pub fn pretty_model(id: &str) -> String {
@@ -278,10 +304,50 @@ mod tests {
         assert_eq!(UsageIndex::pretty_model("claude-sonnet-4-5-20250929"), "Sonnet 4.5");
         assert_eq!(UsageIndex::pretty_model("claude-haiku-5-5"), "Haiku 5.5");
         assert_eq!(UsageIndex::pretty_model("gpt-4"), "gpt-4");
-        assert_eq!(UsageIndex::price("claude-opus-4-1"), (15.0, 75.0));
-        assert_eq!(UsageIndex::price("claude-opus-4-5-2025"), (5.0, 25.0));
-        assert_eq!(UsageIndex::price("claude-haiku-4-5"), (1.0, 5.0));
-        assert_eq!(UsageIndex::price("claude-sonnet-4"), (3.0, 15.0));
+        let p = |m: &str| UsageIndex::price(m, 0);
+        assert_eq!(p("claude-opus-4-1"), (15.0, 75.0, 1.5));
+        assert_eq!(p("claude-opus-4-5-2025"), (5.0, 25.0, 0.5));
+        assert_eq!(p("claude-haiku-4-5"), (1.0, 5.0, 0.1));
+        assert_eq!(p("claude-sonnet-4"), (3.0, 15.0, 0.3));
+    }
+
+    #[test]
+    fn pricing_table() {
+        let c = |m: &str, i, o, r, w5, w1| UsageIndex::cost(m, i, o, r, w5, w1);
+        let near = |a: f64, b: f64| assert!((a - b).abs() < 1e-12, "{a} != {b}");
+        let m = 1_000_000;
+        near(c("claude-opus-5-5[1m]", 0, 0, m, 0, m), 0.2 + 8.0);
+        near(c("claude-fable-5-1", m, m, m, 0, 0), 10.0 + 50.0 + 0.25);
+        near(c("claude-fable-5", 0, 0, m, 0, 0), 1.0);
+        near(c("claude-sonnet-5-5", m, m, 0, 0, 0), 12.0);
+        near(c("claude-sonnet-4-6", m, 0, 0, 0, 0), 3.0);
+        near(c("claude-opus-4-8", m, 0, 0, 0, 0), 5.0);
+        near(c("claude-haiku-5-5", 100_000, 0, 0, 0, 0), 0.01);
+        near(c("claude-haiku-5-5", 100_001, 0, 0, 0, 0), 100_001.0 * 0.5 / 1e6);
+    }
+
+    #[test]
+    fn one_hour_split_and_reprice() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let file = tmp.path().join("a/projects/p/s.jsonl");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let l = line(&ts, "1", "claude-sonnet-5-5", 0, 0, 0, 1000)
+            .replace(r#""output_tokens":0}"#, r#""output_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":400,"ephemeral_1h_input_tokens":600}}"#);
+        std::fs::write(&file, l + "\n").unwrap();
+        let accts = [acct("a", &tmp.path().join("a"))];
+        let ix = UsageIndex::open(tmp.path().join("store/usage.json"), tmp.path().join("store/copied"));
+        ix.scan(&accts).unwrap();
+        let son = totals(&ix, GroupBy::Model, &accts);
+        assert!((son[0].cost - (400.0 * 2.0 * 1.25 + 600.0 * 2.0 * 2.0) / 1e6).abs() < 1e-12);
+
+        let old = tmp.path().join("old.json");
+        std::fs::write(&old, r#"{"agg":{"2026-10-01\u001f/a\u001f/w\u001fclaude-opus-5-5":{"input":0,"output":1000000,"cache_read":1000000,"cache_write":1000000,"cost":999}},"files":{},"recent":[]}"#).unwrap();
+        let ix = UsageIndex::open(old.clone(), tmp.path().join("c"));
+        let r = ix.rows(GroupBy::Model, 400, &accts, &BTreeMap::new(), Path::new("/h"));
+        assert!((r[0].cost - (20.0 + 0.2 + 8.0)).abs() < 1e-9, "{}", r[0].cost);
+        ix.scan(&[]).unwrap();
+        assert!(std::fs::read_to_string(&old).unwrap().contains("\"pricing\":2"));
     }
 
     #[test]
@@ -303,7 +369,7 @@ mod tests {
         assert_eq!(by_model.iter().map(|r| r.tokens).sum::<u64>(), 1133);
         assert_eq!(by_model.iter().map(|r| r.output_tokens).sum::<u64>(), 22);
         let opus = by_model.iter().find(|r| r.label == "Opus 5.5").unwrap();
-        assert!((opus.cost - 0.00685).abs() < 1e-9);
+        assert!((opus.cost - (10.0 * 4.0 + 20.0 * 20.0 + 100.0 * 0.2 + 1000.0 * 4.0 * 1.25) / 1e6).abs() < 1e-12);
         let ls = ix.last_session().unwrap();
         assert_eq!((ls.cwd.as_str(), ls.account_id.as_str()), ("/w/x", "a"));
         ix.scan(&accts).unwrap();

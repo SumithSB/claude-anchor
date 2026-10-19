@@ -27,6 +27,17 @@ fn failed(now: i64, error: String, needs_sign_in: bool) -> Limits {
     Limits { five_hour: None, weekly: None, fetched_at: now, stale: true, error: Some(error), needs_sign_in, note: None }
 }
 
+/// Old numbers whose window has since reset would overstate usage: a passed reset means nothing used yet.
+fn aged(mut l: Limits, now: i64) -> Limits {
+    let age = |w: Option<LimitWindow>| match w {
+        Some(LimitWindow { resets_at: Some(at), .. }) if chrono::DateTime::parse_from_rfc3339(&at).is_ok_and(|t| t.timestamp() <= now) => Some(LimitWindow { percent: 0.0, resets_at: None }),
+        w => w,
+    };
+    l.five_hour = age(l.five_hour.take());
+    l.weekly = age(l.weekly.take());
+    l
+}
+
 /// Blocking fetch for one account (20 s timeout). Falls back to `previous` or cachedUsageUtilization.
 pub fn fetch(a: &Account, paths: &Paths, previous: Option<&Limits>) -> Limits {
     let now = chrono::Utc::now().timestamp();
@@ -56,13 +67,13 @@ pub fn fetch(a: &Account, paths: &Paths, previous: Option<&Limits>) -> Limits {
     }
     if unreachable {
         if let Some(p) = previous.filter(|p| p.error.is_none() && (p.five_hour.is_some() || p.weekly.is_some())) {
-            return Limits { stale: true, note: Some(OFFLINE_NOTE.into()), ..p.clone() };
+            return Limits { stale: true, note: Some(OFFLINE_NOTE.into()), ..aged(p.clone(), now) };
         }
     }
     let cj = creds::claude_json(a, paths);
     if let Some(u) = cj["cachedUsageUtilization"]["utilization"].as_object() {
         let at = (cj["cachedUsageUtilization"]["fetchedAtMs"].as_f64().unwrap_or(0.0) / 1000.0) as i64;
-        let mut l = parse_limits(&Value::Object(u.clone()), at, true);
+        let mut l = aged(parse_limits(&Value::Object(u.clone()), at, true), now);
         if now - at > 6 * 3600 { l.error = Some(format!("{}'s limits are out of date.", a.name)); }
         else if unreachable { l.note = Some(OFFLINE_NOTE.into()); }
         return l;
@@ -176,6 +187,15 @@ mod tests {
         cfg.accounts = vec![a, pend];
         let all = fetch_all(&cfg, &p, &HashMap::new());
         assert_eq!(all.len(), 1); assert!(all.contains_key("work"));
+    }
+
+    #[test]
+    fn aged_zeroes_passed_resets() {
+        let w = |p, at: i64| Some(LimitWindow { percent: p, resets_at: Some(chrono::DateTime::from_timestamp(at, 0).unwrap().to_rfc3339()) });
+        let old = Limits { five_hour: w(56.0, 940), weekly: w(23.0, 4600), ..lim(0.0, 0.0) };
+        let a = aged(old.clone(), 1000);
+        assert_eq!(a.five_hour, Some(LimitWindow { percent: 0.0, resets_at: None }));
+        assert_eq!(a.weekly, old.weekly);
     }
 
     #[test]

@@ -379,6 +379,21 @@ extension AppModel {
         }
     }
 
+    /// Opens the conversation through the Claude Code extension's link handler. A closed tab comes back with a new
+    /// process, which the wrapper routes to the current anchor; an open tab is only brought forward.
+    func reopenInEditor(_ s: LastSession) {
+        guard let file = s.file else { return }
+        let sid = ((file as NSString).lastPathComponent as NSString).deletingPathExtension
+        guard UUID(uuidString: sid) != nil else { return }
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let cursor = running.contains("com.todesktop.230313mzl4w4u92") && !running.contains("com.microsoft.VSCode")
+        guard let url = URL(string: "\(cursor ? "cursor" : "vscode")://anthropic.claude-code/open?session=\(sid)"),
+              NSWorkspace.shared.open(url) else {
+            banner = "Couldn't open VS Code. Open the conversation from Claude Code's history there."
+            return
+        }
+    }
+
     /// Continuing in VS Code means anchoring at `t`; nil when that would route the folder there, else why not.
     private func editorBlocked(_ s: LastSession, on t: Account) -> String? {
         var after = config
