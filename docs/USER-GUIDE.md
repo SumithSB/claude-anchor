@@ -30,7 +30,7 @@ The Windows and Linux app does the same work as the macOS app: accounts, folder 
 - **Continue opens a terminal.** On Windows it opens Windows Terminal if it is installed, or else a new PowerShell window. On Linux it uses the first terminal it finds. Set the `TERMINAL` environment variable to choose one.
 - **Recycle Bin instead of Trash.** On Windows, removing an account moves its folder to the Recycle Bin. On Linux it goes to Trash.
 - **Restart terminals after install.** Open a new terminal before you run `claude`. A terminal that was already open does not load the shell hook.
-- **Routed shells.** `claude` is routed in bash, zsh and PowerShell. cmd.exe and fish are not routed. In those shells, run `anchor exec -- claude` with the full path to `anchor`.
+- **Routed shells.** `claude` is routed in bash, zsh, fish (Linux), PowerShell and cmd.exe (Windows). fish is set up only if `~/.config/fish` exists when you install; run `anchor install` again after installing fish. In any other shell, run `anchor exec -- claude` with the full path to `anchor`.
 - **Use the `anchor` CLI from a terminal.** Account, rule, limit and usage commands are listed in the [command line section](../README.md#command-line-windows-and-linux) of the README.
 
 ## First run

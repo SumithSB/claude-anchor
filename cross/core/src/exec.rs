@@ -24,9 +24,10 @@ fn route(paths: &Paths) -> Envs {
     }
 }
 
+/// `/D` keeps cmd from running AutoRun, where the cmd.exe hook lives.
 fn command(prog: &OsStr, rest: &[OsString], envs: &Envs) -> Command {
     let ext = std::path::Path::new(prog).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    let mut c = if cfg!(windows) && (ext == "cmd" || ext == "bat") { let mut c = Command::new("cmd"); c.arg("/C").arg(prog); c } else { Command::new(prog) };
+    let mut c = if cfg!(windows) && (ext == "cmd" || ext == "bat") { let mut c = Command::new("cmd"); c.arg("/D").arg("/C").arg(prog); c } else { Command::new(prog) };
     c.args(rest);
     for (k, v) in envs { match v { Some(v) => { c.env(k, v); } None => { c.env_remove(k); } } }
     c

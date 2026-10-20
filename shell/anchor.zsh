@@ -31,6 +31,32 @@ _anchor_resolve() {
   if (( best_len >= 0 )); then REPLY=$best_cfg; else REPLY=$def_cfg; fi
 }
 
+# _anchor_slug path -> sets REPLY to Claude Code's folder name under projects/ for path: every UTF-16 unit that
+# isn't [A-Za-z0-9] becomes "-"; past 200 characters it is cut to 200 plus "-" and base36 of a Java-style hash.
+_anchor_slug() {
+  emulate -L zsh
+  local p=$1 c
+  REPLY=${p//[^A-Za-z0-9]/-}
+  [[ $p != *[^\ -~]* ]] && (( ${#p} <= 200 )) && return 0    # plain ASCII and short: done
+  local -a units
+  integer cp h=0 u
+  REPLY=
+  for c in ${(s::)p}; do
+    (( cp = #c ))
+    if (( cp > 0xFFFF )); then units+=($(( 0xD800 + ((cp - 0x10000) >> 10) )) $(( 0xDC00 + ((cp - 0x10000) & 0x3FF) )))
+    else units+=($cp); fi
+  done
+  for u in $units; do
+    if [[ $u -lt 128 && ${(#)u} == [A-Za-z0-9] ]]; then REPLY+=${(#)u}; else REPLY+=-; fi
+    (( h = (h * 31 + u) & 0xFFFFFFFF ))
+  done
+  (( ${#REPLY} <= 200 )) && return 0
+  (( h >= 0x80000000 )) && (( h = 0x100000000 - h ))   # Math.abs of the int32
+  local b36= digits=0123456789abcdefghijklmnopqrstuvwxyz
+  while :; do b36=${digits[h % 36 + 1]}$b36; (( h /= 36 )); (( h )) || break; done
+  REPLY=${REPLY[1,200]}-$b36
+}
+
 # _anchor_sync -> share this folder's conversations across every account before claude starts,
 # so --resume, -c and VS Code's history work after switching accounts.
 # A copy is only created or extended (when it is an exact prefix of the newer one); diverged copies are left alone.
@@ -43,7 +69,8 @@ _anchor_sync() {
   local home=${CLAUDE_ANCHOR_HOME:-$HOME/.claude-anchor}
   local -a dirs=($HOME/.claude $home/accounts/*(/N))
   (( ${#dirs} > 1 )) || return 0
-  local enc=${PWD//[^A-Za-z0-9]/-} d f name src t ledger=$home/copied
+  _anchor_slug $PWD
+  local enc=$REPLY d f name src t ledger=$home/copied
   local -a st
   local -A best bestsize
   for d in $dirs; do
@@ -116,6 +143,11 @@ if [[ ${ZSH_EVAL_CONTEXT:-} == toplevel && ${1:-} == --selftest ]]; then
   _anchor_check /tmp/ab     /x/acct-d
   _anchor_check /tmp        /x/acct-d
   rm -f "$_anchor_tmp"
+  _anchor_slug_check() { _anchor_slug "$1"; [[ $REPLY == "$2" ]] || { print -u2 -- "FAIL: slug $1 -> '$REPLY' (want '$2')"; _anchor_fail=1; } }
+  _anchor_slug_check /Users/me/proj -Users-me-proj
+  _anchor_slug_check /tmp/café -tmp-caf-
+  _anchor_slug_check /x😀 -x--
+  _anchor_slug_check /${(l:300::a:)} -${(l:199::a:)}-vtkmfl   # same expected value as the Rust test
   if (( _anchor_fail )); then exit 1; fi
   print -r -- "anchor.zsh selftest OK"
   exit 0

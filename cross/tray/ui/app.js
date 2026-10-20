@@ -174,10 +174,8 @@ function freshHTML() {
   if (!fresh.length && activeIsFresh() && a)
     return `<div class="tinted fresh"><span style="color:var(--fresh)">${ic("check", 16)}</span><div><div class="h">${esc(a.name)} has a full 5-hour window</div><div class="s">Your limit just reset. You're good to go.</div></div></div>`;
   if (!fresh.length) return "";
-  const title = fresh.length === 1 ? `${fresh[0].name} has a full 5-hour window` : `${fresh.length} accounts have a full 5-hour window`;
-  return `<div class="tinted fresh"><span style="color:var(--fresh)">${ic("check", 16)}</span><div class="body" style="gap:8px"><div><div class="h">${esc(title)}</div><div class="s">Anchor there to start on a clean slate.</div></div>
-    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">${fresh.slice(0, 2).map((f) => `<button class="btn fresh" data-a="anchorAt" data-id="${esc(f.id)}">${flag(f.flag, 10)}<span class="trunc">Anchor at ${esc(f.name)}</span></button>`).join("")}
-    ${fresh.length > 2 ? `<span class="muted" style="font-size:11.5px">+${fresh.length - 2} more</span>` : ""}</div></div></div>`;
+  return `<div class="tinted fresh col"><div class="row"><span style="color:var(--fresh)">${ic("check", 14)}</span><span class="h" style="font-size:12.5px">Full 5-hour window on</span><span class="sp"></span><span class="muted" style="font-size:11px">Click to anchor</span></div>
+    <div class="chips">${fresh.slice(0, 3).map((f) => `<button class="chip" data-a="anchorAt" data-id="${esc(f.id)}" title="Anchor at ${esc(f.name)}" aria-label="Anchor at ${esc(f.name)}">${flag(f.flag, 9)}<span class="trunc">${esc(f.name)}</span></button>`).join("")}${fresh.length > 3 ? `<span class="muted" style="font-size:11px">+${fresh.length - 3}</span>` : ""}</div></div>`;
 }
 function signingRows() {
   const a = active();
