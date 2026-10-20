@@ -42,6 +42,7 @@ jobs:
         run: |
           sudo apt-get install -y -qq fish >/dev/null
           export HOME="$(mktemp -d)"
+          unset XDG_CONFIG_HOME   # the runner points it at the real home
           mkdir -p "$HOME/.config/fish"
           target/debug/anchor install
           fish -n "$HOME/.config/fish/conf.d/claude-anchor.fish"
