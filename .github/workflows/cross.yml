@@ -36,6 +36,20 @@ jobs:
           bash -ic 'type claude' 2>&1 | tee out.txt
           grep -q 'function' out.txt
 
+      - name: Smoke (fish)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq fish >/dev/null
+          export HOME="$(mktemp -d)"
+          unset XDG_CONFIG_HOME   # the runner points it at the real home
+          mkdir -p "$HOME/.config/fish"
+          target/debug/anchor install
+          fish -n "$HOME/.config/fish/conf.d/claude-anchor.fish"
+          fish -c 'functions -q claude'
+          target/debug/anchor uninstall
+          test ! -e "$HOME/.config/fish/conf.d/claude-anchor.fish"
+
       - name: Smoke (PowerShell)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -47,6 +61,23 @@ jobs:
           $t = pwsh -Command "(Get-Command claude).CommandType"
           $t
           if ($t -ne 'Function') { exit 1 }
+
+      - name: Smoke (cmd.exe AutoRun)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $key = 'HKCU:\Software\Microsoft\Command Processor'
+          New-Item -Force $key | Out-Null
+          Set-ItemProperty $key AutoRun 'echo pre >nul'
+          target\debug\anchor.exe install
+          $v = (Get-ItemProperty $key).AutoRun
+          $v
+          if ($v -notlike 'echo pre >nul & doskey claude=*anchor.exe" exec -- claude $* 2>nul') { exit 1 }
+          if ((cmd /c echo ok) -ne 'ok') { Write-Error 'AutoRun broke cmd'; exit 1 }
+          target\debug\anchor.exe install
+          if ((Get-ItemProperty $key).AutoRun -ne $v) { Write-Error 'install is not idempotent'; exit 1 }
+          target\debug\anchor.exe uninstall
+          if ((Get-ItemProperty $key).AutoRun -ne 'echo pre >nul') { Write-Error 'uninstall must keep the existing command'; exit 1 }
 
   tray:
     strategy:

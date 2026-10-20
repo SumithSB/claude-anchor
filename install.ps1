@@ -1,6 +1,6 @@
 # Claude Anchor installer for Windows (PowerShell 5.1+).
 #   irm https://raw.githubusercontent.com/SumithSB/claude-anchor/main/install.ps1 | iex
-# Env: CLAUDE_ANCHOR_NO_SHELL=1 (skip the profile line), CLAUDE_ANCHOR_NO_LAUNCH=1
+# Env: CLAUDE_ANCHOR_NO_SHELL=1 (skip the profile line and cmd.exe AutoRun), CLAUDE_ANCHOR_NO_LAUNCH=1
 # The installer is unsigned, so SmartScreen may warn when the app first runs.
 
 function Install-ClaudeAnchor {
@@ -47,7 +47,7 @@ function Install-ClaudeAnchor {
     $anchor = Join-Path $dir 'anchor.exe'
     $ahome = if ($env:CLAUDE_ANCHOR_HOME) { $env:CLAUDE_ANCHOR_HOME } else { Join-Path $HOME '.claude-anchor' }
     if ($env:CLAUDE_ANCHOR_NO_SHELL -eq '1') {
-      Step 'Skipping the PowerShell profile line (CLAUDE_ANCHOR_NO_SHELL=1)'
+      Step 'Skipping the PowerShell and cmd.exe hooks (CLAUDE_ANCHOR_NO_SHELL=1)'
       New-Item -ItemType Directory -Force (Join-Path $ahome 'bin') | Out-Null
       Copy-Item $anchor (Join-Path $ahome 'bin\anchor.exe') -Force
       Copy-Item $anchor (Join-Path $ahome 'bin\claude-wrapper.exe') -Force
@@ -69,7 +69,7 @@ function Install-ClaudeAnchor {
     Write-Host 'Installed:'
     Write-Host "  App: $exe"
     Write-Host "  CLI: $(Join-Path $ahome 'bin\anchor.exe')"
-    if ($env:CLAUDE_ANCHOR_NO_SHELL -ne '1') { Write-Host '  PowerShell profile: one marked line (# claude-anchor)' }
+    if ($env:CLAUDE_ANCHOR_NO_SHELL -ne '1') { Write-Host '  Shell hooks: one marked line in each PowerShell profile (# claude-anchor), and a cmd.exe AutoRun macro' }
     Write-Host 'Next: click the anchor in the system tray, then Accounts -> Add account. Open a new terminal for `claude` to be routed.'
     if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
       Write-Warning 'Claude Code CLI not found. Install it with: irm https://claude.ai/install.ps1 | iex'

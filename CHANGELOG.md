@@ -2,6 +2,21 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-10-20
+
+### Added
+
+- Linux: `claude` is routed in fish, through `~/.config/fish/conf.d/claude-anchor.fish` (only when fish's config folder exists).
+- Windows: `claude` is routed in cmd.exe, through a doskey macro in cmd's AutoRun registry value. An existing AutoRun command is kept, and uninstall removes only the macro.
+
+### Changed
+
+- Windows and Linux: the fresh card is one row of account chips, like the macOS app.
+
+### Fixed
+
+- macOS: conversations in folders whose path is longer than 200 characters are now shared between accounts. The shell hook computed a different folder name from Claude Code's for those paths.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

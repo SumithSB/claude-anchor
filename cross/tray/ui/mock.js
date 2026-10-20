@@ -1,5 +1,5 @@
 // Dev-only fake Tauri backend so the pages render in a normal browser. Loaded only when window.__TAURI__ is absent.
-// Query params: ?scenario=six|many|empty|nocli|signin|error|fresh|hot  &platform=windows|linux  &wayland=1
+// Query params: ?scenario=six|many|fresh2|empty|nocli|signin|error|fresh|hot  &platform=windows|linux  &wayland=1
 export function installMock() {
   const q = new URLSearchParams(location.search);
   const now = () => Math.floor(Date.now() / 1000);
@@ -18,7 +18,7 @@ export function installMock() {
     acct("client", "Client", "c", "you@client.example", "max"),
     acct("personal", "Personal", "p", "you@example.com", "pro"),
   ];
-  if (scenario === "six" || scenario === "many") {
+  if (scenario === "six" || scenario === "many" || scenario === "fresh2") {
     accounts.push(acct("studio", "Studio", "s", "you@studio.example", "pro"), acct("side", "Side project", "d", "you@example.com", "max"),
       acct("lab", "Lab", "l", undefined, undefined, { pending: true }));
     if (scenario === "many") accounts.push(acct("n1", "Archive", "g", "you@example.net", "pro"), acct("n2", "Travel", "h", "you@example.org", "pro"), acct("n3", "Spare", "k", "you@example.dev", "pro"));
@@ -31,9 +31,9 @@ export function installMock() {
   });
   let limits = {
     primary: lim(scenario === "hot" ? 93 : 68, 31),
-    client: lim(22, 48, 11000),
+    client: lim(scenario === "fresh2" ? 0 : 22, 48, 11000),
     personal: lim(scenario === "fresh" ? 0 : 0, 12, 18000),
-    studio: lim(81, 60, 1320), side: lim(45, 30, 9000), n1: lim(10, 5), n2: lim(55, 20), n3: lim(2, 2),
+    studio: lim(scenario === "fresh2" ? 0 : 81, 60, 1320), side: lim(scenario === "fresh2" ? 0 : 45, 30, 9000), n1: lim(10, 5), n2: lim(55, 20), n3: lim(2, 2),
   };
   if (scenario === "error") limits.client = { ...lim(null, null), fiveHour: null, weekly: null, error: "Client's sign-in expired. Sign in again.", needsSignIn: true };
 
