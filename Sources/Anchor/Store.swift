@@ -601,13 +601,66 @@ extension AppModel {
     if [[ -z ${CLAUDE_CONFIG_DIR:-} && -r "$HOME/.claude-anchor/anchor.zsh" ]]; then
       source "$HOME/.claude-anchor/anchor.zsh"
       _anchor_resolve "$PWD"
+      cfg=$REPLY
       (( $+functions[_anchor_sync] )) && _anchor_sync
-      if [[ $REPLY != - ]]; then export CLAUDE_CONFIG_DIR=$REPLY CLAUDE_ANCHOR_ACCOUNT=${REPLY:t}
+      if [[ $cfg != - ]]; then export CLAUDE_CONFIG_DIR=$cfg CLAUDE_ANCHOR_ACCOUNT=${cfg:t}
       else export CLAUDE_ANCHOR_ACCOUNT=primary; fi
     fi
     exec "$@"
 
     """
+
+    /// Runs `wrapperScript` with the repo's anchor.zsh in a scratch home, as VS Code would. The folder's account
+    /// must reach Claude as an absolute CLAUDE_CONFIG_DIR: 0.6.0 passed the folder's slug, a fresh signed-out dir.
+    /// Run from the repo root (as CI does), so the hook under test is shell/anchor.zsh.
+    nonisolated static func wrapperSelfTest() {
+        let fm = FileManager.default
+        let hook = fm.currentDirectoryPath + "/shell/anchor.zsh"
+        precondition(fm.fileExists(atPath: hook), "run --self-test from the repo root (no \(hook))")
+        let tmp = NSTemporaryDirectory()
+        for old in (try? fm.contentsOfDirectory(atPath: tmp)) ?? [] where old.hasPrefix("anchor-wrapper-") {
+            try? fm.removeItem(atPath: tmp + "/" + old)   // left by a run whose assert crashed before its defer
+        }
+        let base = URL(fileURLWithPath: tmp).appendingPathComponent("anchor-wrapper-" + UUID().uuidString)
+        try! fm.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: base) }
+        // The wrapper sees the physical cwd (/private/var/...); resolvingSymlinksInPath would strip /private again.
+        let t = realpath(base.path, nil).map { p in defer { free(p) }; return String(cString: p) }!
+        let home = t + "/home", work = home + "/.claude-anchor/accounts/work", wrapper = home + "/.claude-anchor/bin/claude-wrapper"
+        let plain = t + "/w/plain", accented = t + "/w/café", long = t + "/w/" + String(repeating: "a", count: 220), primary = t + "/p/sub"
+        for d in [home + "/.claude", work, home + "/.claude-anchor/bin", plain, accented, long, primary] {
+            try! fm.createDirectory(atPath: d, withIntermediateDirectories: true)
+        }
+        try! fm.copyItem(atPath: hook, toPath: home + "/.claude-anchor/anchor.zsh")
+        try! "\(t)/p\t-\ndefault\t\(work)\n".write(toFile: home + "/.claude-anchor/routes", atomically: true, encoding: .utf8)
+        try! wrapperScript.write(toFile: wrapper, atomically: true, encoding: .utf8)
+        try! fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper)
+
+        func launch(in dir: String, env extra: [String: String] = [:]) -> String {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: wrapper)
+            p.arguments = ["/bin/sh", "-c", #"printf '%s|%s' "${CLAUDE_CONFIG_DIR--}" "${CLAUDE_ANCHOR_ACCOUNT-}""#]
+            p.currentDirectoryURL = URL(fileURLWithPath: dir)
+            p.environment = ["HOME": home, "PATH": "/usr/bin:/bin"].merging(extra) { $1 }
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            try! p.run()
+            let d = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            return String(decoding: d, as: UTF8.self)
+        }
+        for dir in [plain, accented, long] {
+            let got = launch(in: dir)
+            assert(got == work + "|work", "wrapper in \(dir) ran with \(got)")
+        }
+        assert(launch(in: primary) == "-|primary", "a rule to the primary leaves CLAUDE_CONFIG_DIR unset")
+        assert(launch(in: plain, env: ["CLAUDE_CONFIG_DIR": "/elsewhere"]) == "/elsewhere|", "an explicit CLAUDE_CONFIG_DIR wins")
+        // The wrapper must hold on to the account itself, not rely on _anchor_sync keeping REPLY.
+        let h = try! FileHandle(forWritingTo: URL(fileURLWithPath: home + "/.claude-anchor/anchor.zsh"))
+        h.seekToEndOfFile(); h.write(Data("\n_anchor_sync() { REPLY=clobbered }\n".utf8)); try! h.close()
+        assert(launch(in: plain) == work + "|work", "wrapper with a sync that sets REPLY")
+        print("Wrapper selfTest OK")
+    }
 
     /// Writes the shim and the editor wrapper under ~/.claude-anchor, only when content differs.
     func installShellFiles() {

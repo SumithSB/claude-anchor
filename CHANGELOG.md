@@ -2,6 +2,14 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.1] - 2026-10-21
+
+### Fixed
+
+- macOS: `claude` and new VS Code or Cursor conversations run on the routed account again. In 0.6.0 the conversation sync overwrote the chosen account, so Claude Code started in an empty folder named after the project (for example `-Users-me-proj` inside the project). Every new terminal or editor window looked signed out, and because no session used the real accounts, their sign-ins went stale and the app showed no limits and "Not updated yet".
+- After updating, open a new terminal (or run `source ~/.claude-anchor/anchor.zsh`). Terminals opened under 0.6.0 keep the old `claude`. VS Code and Cursor pick up the fix on their own.
+- If you used 0.6.0, delete the folders it left behind. Each is named after the folder `claude` ran in, with every `/` turned into `-` (for example `-Users-me-proj`), and sits inside that folder, which can be a subfolder of a project. Check `git status` too, so none gets committed. Conversations started there are in their `projects` subfolder.
+
 ## [0.6.0] - 2026-10-20
 
 ### Added

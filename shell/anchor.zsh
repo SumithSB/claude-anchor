@@ -64,6 +64,7 @@ _anchor_slug() {
 _anchor_sync() {
   emulate -L zsh
   setopt null_glob
+  local REPLY    # callers still hold _anchor_resolve's answer in REPLY; _anchor_slug must not overwrite it
   [[ -n ${CLAUDE_ANCHOR_NO_SYNC:-} ]] && return 0
   zmodload -F zsh/stat b:zstat 2>/dev/null || return 0
   local home=${CLAUDE_ANCHOR_HOME:-$HOME/.claude-anchor}
@@ -109,12 +110,13 @@ claude() {
     return
   fi
   _anchor_resolve "$PWD"
+  local cfg=$REPLY
   _anchor_sync
   # CLAUDE_ANCHOR_ACCOUNT lets a session tell which account it runs on (~/.claude.json is always the primary's).
-  if [[ $REPLY == - ]]; then
+  if [[ $cfg == - ]]; then
     CLAUDE_ANCHOR_ACCOUNT=primary command claude "$@"
   else
-    CLAUDE_ANCHOR_ACCOUNT=${REPLY:t} CLAUDE_CONFIG_DIR=$REPLY command claude "$@"
+    CLAUDE_ANCHOR_ACCOUNT=${cfg:t} CLAUDE_CONFIG_DIR=$cfg command claude "$@"
   fi
 }
 
@@ -148,6 +150,60 @@ if [[ ${ZSH_EVAL_CONTEXT:-} == toplevel && ${1:-} == --selftest ]]; then
   _anchor_slug_check /tmp/café -tmp-caf-
   _anchor_slug_check /x😀 -x--
   _anchor_slug_check /${(l:300::a:)} -${(l:199::a:)}-vtkmfl   # same expected value as the Rust test
+  _anchor_want() { [[ $1 == "$2" ]] || { print -u2 -- "FAIL: $3 -> '$1' (want '$2')"; _anchor_fail=1; } }
+
+  # End to end: claude() with the sync on, in a scratch home with the primary and one more account.
+  # 0.6.0 let _anchor_sync overwrite REPLY, so claude ran with CLAUDE_CONFIG_DIR set to the folder's slug.
+  _anchor_tmp=$(mktemp -d) || exit 1; _anchor_tmp=${_anchor_tmp:A}
+  (
+    T=$_anchor_tmp
+    export HOME=$T/home PATH=$T/bin:$PATH CLAUDE_ANCHOR_ROUTES=$T/home/.claude-anchor/routes
+    unset CLAUDE_CONFIG_DIR CLAUDE_ANCHOR_ACCOUNT CLAUDE_ANCHOR_OFF CLAUDE_ANCHOR_NO_SYNC CLAUDE_ANCHOR_HOME
+    P=$HOME/.claude W=$HOME/.claude-anchor/accounts/work
+    long=$T/w/${(l:220::a:)}
+    mkdir -p $T/bin $P $W $T/w/plain $T/w/café $long $T/p/sub
+    print -r -- '#!/bin/sh
+printf "%s|%s|%s\n" "${CLAUDE_CONFIG_DIR--}" "${CLAUDE_ANCHOR_ACCOUNT-}" "$*"' > $T/bin/claude
+    chmod +x $T/bin/claude
+    printf '%s\t%s\n' $T/p - default $W > $CLAUDE_ANCHOR_ROUTES
+    run() { (cd -- $1 && claude --x) }
+
+    _anchor_want "$(run $T/w/plain)" "$W|work|--x" "default route"
+    _anchor_want "$(run $T/w/café)"  "$W|work|--x" "default route, accented folder"
+    _anchor_want "$(run $long)"      "$W|work|--x" "default route, folder past 200 characters"
+    _anchor_want "$(run $T/p/sub)"   "-|primary|--x" "rule to the primary account"
+    _anchor_want "$(export CLAUDE_CONFIG_DIR=/elsewhere; run $T/w/plain)" "/elsewhere||--x" "CLAUDE_CONFIG_DIR already set"
+    _anchor_want "$(export CLAUDE_ANCHOR_OFF=1; run $T/w/plain)" "-||--x" "CLAUDE_ANCHOR_OFF"
+    REPLY=/x/acct-a; _anchor_sync
+    _anchor_want "$REPLY" /x/acct-a "_anchor_sync leaves REPLY alone"
+
+    # The sync shares conversations and never touches sign-in or settings files.
+    for d in $P $W; do print -r -- "$d" > $d/.claude.json; print -r -- "$d" > $d/.credentials.json; done
+    for dir in $T/w/plain $T/w/café $long; do
+      _anchor_slug $dir; enc=$REPLY
+      mkdir -p $P/projects/$enc/new/subagents $W/projects/$enc
+      print -r -- one > $P/projects/$enc/new.jsonl
+      print -r -- sub > $P/projects/$enc/new/subagents/a.jsonl
+      printf 'a\nb\n' > $W/projects/$enc/grown.jsonl; printf 'a\n' > $P/projects/$enc/grown.jsonl
+      printf 'x\n' > $P/projects/$enc/split.jsonl; printf 'y\nz\n' > $W/projects/$enc/split.jsonl
+      run $dir > /dev/null
+      _anchor_want "$(<$W/projects/$enc/new.jsonl)" one "new conversation copied ($dir:t)"
+      _anchor_want "$(<$W/projects/$enc/new/subagents/a.jsonl)" sub "subagent transcript copied ($dir:t)"
+      _anchor_want "$(<$P/projects/$enc/grown.jsonl)" $'a\nb' "shorter copy extended ($dir:t)"
+      _anchor_want "$(<$P/projects/$enc/split.jsonl)" x "diverged copy left alone ($dir:t)"
+      _anchor_want "$(<$W/projects/$enc/split.jsonl)" $'y\nz' "diverged copy left alone ($dir:t)"
+      [[ -n $(grep -F -- $W/projects/$enc/new.jsonl $HOME/.claude-anchor/copied) ]] || _anchor_want missing logged "copy logged ($dir:t)"
+    done
+    for d in $P $W; do
+      _anchor_want "$(<$d/.claude.json)" $d ".claude.json untouched"
+      _anchor_want "$(<$d/.credentials.json)" $d ".credentials.json untouched"
+    done
+    # claude() must hold on to the account itself, not rely on _anchor_sync keeping REPLY.
+    _anchor_sync() { REPLY=clobbered }
+    _anchor_want "$(run $T/w/plain)" "$W|work|--x" "claude() with a sync that sets REPLY"
+    exit $_anchor_fail
+  ) || _anchor_fail=1
+  rm -rf "$_anchor_tmp"
   if (( _anchor_fail )); then exit 1; fi
   print -r -- "anchor.zsh selftest OK"
   exit 0
