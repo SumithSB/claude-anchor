@@ -15,6 +15,7 @@ import AppKit
         if a.contains("--self-test") {   // CI; build in debug so asserts fire
             UsageIndex.selfTest()
             AppModel.selfTest()
+            AppModel.wrapperSelfTest()
             exit(0)
         }
         MainActor.assumeIsolated { AnchorApp.main() }
