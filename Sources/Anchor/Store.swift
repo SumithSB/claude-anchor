@@ -612,10 +612,16 @@ extension AppModel {
 
     /// Runs `wrapperScript` with the repo's anchor.zsh in a scratch home, as VS Code would. The folder's account
     /// must reach Claude as an absolute CLAUDE_CONFIG_DIR: 0.6.0 passed the folder's slug, a fresh signed-out dir.
-    nonisolated static func wrapperSelfTest(source: String = #filePath) {
+    /// Run from the repo root (as CI does), so the hook under test is shell/anchor.zsh.
+    nonisolated static func wrapperSelfTest() {
         let fm = FileManager.default
-        let repo = URL(fileURLWithPath: source).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let base = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("anchor-wrapper-" + UUID().uuidString)
+        let hook = fm.currentDirectoryPath + "/shell/anchor.zsh"
+        precondition(fm.fileExists(atPath: hook), "run --self-test from the repo root (no \(hook))")
+        let tmp = NSTemporaryDirectory()
+        for old in (try? fm.contentsOfDirectory(atPath: tmp)) ?? [] where old.hasPrefix("anchor-wrapper-") {
+            try? fm.removeItem(atPath: tmp + "/" + old)   // left by a run whose assert crashed before its defer
+        }
+        let base = URL(fileURLWithPath: tmp).appendingPathComponent("anchor-wrapper-" + UUID().uuidString)
         try! fm.createDirectory(at: base, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: base) }
         // The wrapper sees the physical cwd (/private/var/...); resolvingSymlinksInPath would strip /private again.
@@ -625,7 +631,7 @@ extension AppModel {
         for d in [home + "/.claude", work, home + "/.claude-anchor/bin", plain, accented, long, primary] {
             try! fm.createDirectory(atPath: d, withIntermediateDirectories: true)
         }
-        try! fm.copyItem(atPath: repo.path + "/shell/anchor.zsh", toPath: home + "/.claude-anchor/anchor.zsh")
+        try! fm.copyItem(atPath: hook, toPath: home + "/.claude-anchor/anchor.zsh")
         try! "\(t)/p\t-\ndefault\t\(work)\n".write(toFile: home + "/.claude-anchor/routes", atomically: true, encoding: .utf8)
         try! wrapperScript.write(toFile: wrapper, atomically: true, encoding: .utf8)
         try! fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper)
@@ -649,7 +655,10 @@ extension AppModel {
         }
         assert(launch(in: primary) == "-|primary", "a rule to the primary leaves CLAUDE_CONFIG_DIR unset")
         assert(launch(in: plain, env: ["CLAUDE_CONFIG_DIR": "/elsewhere"]) == "/elsewhere|", "an explicit CLAUDE_CONFIG_DIR wins")
-        assert((try? fm.contentsOfDirectory(atPath: plain))?.isEmpty == true, "nothing is created in the project folder")
+        // The wrapper must hold on to the account itself, not rely on _anchor_sync keeping REPLY.
+        let h = try! FileHandle(forWritingTo: URL(fileURLWithPath: home + "/.claude-anchor/anchor.zsh"))
+        h.seekToEndOfFile(); h.write(Data("\n_anchor_sync() { REPLY=clobbered }\n".utf8)); try! h.close()
+        assert(launch(in: plain) == work + "|work", "wrapper with a sync that sets REPLY")
         print("Wrapper selfTest OK")
     }
 

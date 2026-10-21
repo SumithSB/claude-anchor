@@ -154,7 +154,7 @@ if [[ ${ZSH_EVAL_CONTEXT:-} == toplevel && ${1:-} == --selftest ]]; then
 
   # End to end: claude() with the sync on, in a scratch home with the primary and one more account.
   # 0.6.0 let _anchor_sync overwrite REPLY, so claude ran with CLAUDE_CONFIG_DIR set to the folder's slug.
-  _anchor_tmp=$(mktemp -d); _anchor_tmp=${_anchor_tmp:A}
+  _anchor_tmp=$(mktemp -d) || exit 1; _anchor_tmp=${_anchor_tmp:A}
   (
     T=$_anchor_tmp
     export HOME=$T/home PATH=$T/bin:$PATH CLAUDE_ANCHOR_ROUTES=$T/home/.claude-anchor/routes
@@ -198,7 +198,9 @@ printf "%s|%s|%s\n" "${CLAUDE_CONFIG_DIR--}" "${CLAUDE_ANCHOR_ACCOUNT-}" "$*"' >
       _anchor_want "$(<$d/.claude.json)" $d ".claude.json untouched"
       _anchor_want "$(<$d/.credentials.json)" $d ".credentials.json untouched"
     done
-    _anchor_want "$(print -rl -- $T/w/*/-*(N/) $T/w/-*(N/))" "" "no config folder created in the project"
+    # claude() must hold on to the account itself, not rely on _anchor_sync keeping REPLY.
+    _anchor_sync() { REPLY=clobbered }
+    _anchor_want "$(run $T/w/plain)" "$W|work|--x" "claude() with a sync that sets REPLY"
     exit $_anchor_fail
   ) || _anchor_fail=1
   rm -rf "$_anchor_tmp"
