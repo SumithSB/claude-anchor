@@ -100,7 +100,7 @@ fn window(w: &Option<anchor_core::model::LimitWindow>) -> String {
 fn limit_text(l: Option<&Limits>) -> String {
     match l {
         None => "-".into(),
-        Some(l) if l.needs_sign_in => "needs sign-in".into(),
+        Some(l) if l.needs_sign_in && l.error.is_some() => "needs sign-in".into(),
         Some(l) if l.error.is_some() => l.error.clone().unwrap_or_default(),
         Some(l) => format!("5h {} · weekly {}{}", window(&l.five_hour), window(&l.weekly), if l.stale { " (stale)" } else { "" }),
     }

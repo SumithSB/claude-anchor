@@ -446,7 +446,12 @@ private struct RoundedWindow: NSViewRepresentable {
                     Ring(title: "5-hour", window: l.fiveHour, stale: l.stale)
                     Ring(title: "Weekly", window: l.weekly, stale: l.stale)
                 }
-                if let n = l.note { Text(n).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
+                if let n = l.note {
+                    HStack {
+                        Text(n).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                        if l.needsSignIn { Spacer(); Button("Sign in again") { model.signIn(a.id) }.controlSize(.small) }
+                    }
+                }
             }
         } else {
             HStack(spacing: 6) {

@@ -37,9 +37,12 @@ extension AppModel {
     }
 
     /// Account's .claude.json (primary's lives in HOME, not in its config dir).
+    nonisolated static func claudeJSONPath(for a: Account) -> String {
+        a.isPrimary ? Paths.home + "/.claude.json" : a.dir + "/.claude.json"
+    }
+
     nonisolated static func claudeJSON(for a: Account) -> [String: Any] {
-        let path = a.isPrimary ? Paths.home + "/.claude.json" : a.dir + "/.claude.json"
-        guard let d = FileManager.default.contents(atPath: path),
+        guard let d = FileManager.default.contents(atPath: claudeJSONPath(for: a)),
               let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
         return o
     }
@@ -86,17 +89,33 @@ extension AppModel {
         email(of: a) != nil || keychainJSON(service: keychainService(for: a)) != nil
     }
 
+    /// Definitely signed out: .claude.json is gone or reads cleanly without an account, and the keychain answers
+    /// "no such item" (exit 44). A file caught mid-write by Claude Code or a keychain still locked after wake is
+    /// not a sign-out, and treating it as one wiped the account's limits.
+    nonisolated static func signedOut(_ a: Account) -> Bool {
+        if let d = FileManager.default.contents(atPath: claudeJSONPath(for: a)) {
+            guard let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], o["oauthAccount"] == nil else { return false }
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        p.arguments = ["find-generic-password", "-s", keychainService(for: a)]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 44
+    }
+
     /// Keeps the primary account's pending flag in step with what the CLI actually has (sign-in or sign-out in Terminal).
     func reconcilePrimary() {
         guard live, let i = config.accounts.firstIndex(where: { $0.isPrimary }), !signingIn.contains(config.accounts[i].id) else { return }
-        let a = config.accounts[i], ok = Self.signedIn(a)
-        if ok && a.pending {
+        let a = config.accounts[i]
+        if a.pending && Self.signedIn(a) {
             config.accounts[i].email = Self.email(of: a)
             config.accounts[i].plan = Self.keychainPlan(for: a)
             config.accounts[i].pending = false
             save()
             Task { await refreshLimits() }
-        } else if !ok && !a.pending {
+        } else if !a.pending && Self.signedOut(a) {
             config.accounts[i].pending = true
             config.accounts[i].email = nil
             config.accounts[i].plan = nil

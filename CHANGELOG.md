@@ -2,6 +2,16 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.2] - 2026-11-02
+
+### Fixed
+
+- The usage dial no longer disappears after the lid has been shut for a few hours or the network drops while you move between connections. When live numbers can't be fetched (offline, an access token that lapsed while the Mac slept, the keychain not ready right after wake), the newest numbers on hand, the last reading or Claude Code's cache, stay on screen dimmed with a note. An error replaces the dial only when there are no numbers at all.
+- A lapsed sign-in now keeps the numbers and puts "Sign in again" next to the note. Claude Code renews the token the next time it runs on that account.
+- No 5-hour window running (after a long idle stretch) reads as 0% used instead of hiding the ring.
+- The main account is no longer marked signed out, with its limits wiped, when its sign-in is read at a bad moment: `~/.claude.json` caught while Claude Code was rewriting it, or the keychain still locked after wake. It now takes a clean file with no account and no keychain item. Windows and Linux apply the same rule to `.credentials.json`.
+- macOS: the floating button comes back on screen when a display is unplugged, the lid shuts onto an external monitor, or the Mac wakes. It returns to its saved spot when that display is back.
+
 ## [0.6.1] - 2026-10-21
 
 ### Fixed

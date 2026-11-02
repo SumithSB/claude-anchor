@@ -89,13 +89,12 @@ impl Store {
     pub fn reconcile_primary(&mut self) -> bool {
         let Some(i) = self.config.accounts.iter().position(|a| a.id == "primary") else { return false };
         let a = self.config.accounts[i].clone();
-        let ok = creds::signed_in(&a, &self.paths);
         let acc = &mut self.config.accounts[i];
-        if ok && a.pending {
+        if a.pending && creds::signed_in(&a, &self.paths) {
             acc.email = creds::email(&a, &self.paths);
             acc.plan = creds::plan(&a, &self.paths);
             acc.pending = false;
-        } else if !ok && !a.pending {
+        } else if !a.pending && creds::signed_out(&a, &self.paths) {
             acc.pending = true;
             acc.email = None;
             acc.plan = None;

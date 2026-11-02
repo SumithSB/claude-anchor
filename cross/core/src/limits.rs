@@ -20,7 +20,10 @@ pub fn parse_limits(v: &Value, fetched_at: i64, stale: bool) -> Limits {
         let w = v.get(k)?;
         Some(LimitWindow { percent: w.get("utilization")?.as_f64()?, resets_at: w.get("resets_at").and_then(Value::as_str).map(String::from) })
     };
-    Limits { five_hour: win("five_hour"), weekly: win("seven_day"), fetched_at, stale, error: None, needs_sign_in: false, note: None }
+    let weekly = win("seven_day");
+    // No 5h entry beside a weekly one means no window is running (long idle): nothing used yet, not unknown.
+    let five_hour = win("five_hour").or_else(|| weekly.as_ref().map(|_| LimitWindow { percent: 0.0, resets_at: None }));
+    Limits { five_hour, weekly, fetched_at, stale, error: None, needs_sign_in: false, note: None }
 }
 
 fn failed(now: i64, error: String, needs_sign_in: bool) -> Limits {
@@ -36,6 +39,20 @@ fn aged(mut l: Limits, now: i64) -> Limits {
     l.five_hour = age(l.five_hour.take());
     l.weekly = age(l.weekly.take());
     l
+}
+
+/// No live numbers (offline, token lapsed while asleep): the newest numbers on hand, the last reading or the
+/// CLI's cache, shown stale with a note rather than an error that empties the dial. None when there are none.
+fn held_over(previous: Option<&Limits>, cached: Option<Limits>, name: &str, expired: bool, unreachable: bool, now: i64) -> Option<Limits> {
+    let best = previous.cloned().into_iter().chain(cached)
+        .filter(|l| l.five_hour.is_some() || l.weekly.is_some())
+        .max_by_key(|l| l.fetched_at)?;
+    let mut l = aged(best, now);
+    l.stale = true; l.error = None; l.needs_sign_in = expired;
+    l.note = if expired { Some(format!("{name}'s sign-in token expired. Usage updates the next time Claude Code runs on it.")) }
+        else if now - l.fetched_at > 6 * 3600 { Some(format!("{name}'s limits are out of date.")) }
+        else if unreachable { Some(OFFLINE_NOTE.into()) } else { None };
+    Some(l)
 }
 
 /// Blocking fetch for one account (20 s timeout). Falls back to `previous` or cachedUsageUtilization.
@@ -65,19 +82,12 @@ pub fn fetch(a: &Account, paths: &Paths, previous: Option<&Limits>) -> Limits {
             expired = true;
         }
     }
-    if unreachable {
-        if let Some(p) = previous.filter(|p| p.error.is_none() && (p.five_hour.is_some() || p.weekly.is_some())) {
-            return Limits { stale: true, note: Some(OFFLINE_NOTE.into()), ..aged(p.clone(), now) };
-        }
-    }
     let cj = creds::claude_json(a, paths);
-    if let Some(u) = cj["cachedUsageUtilization"]["utilization"].as_object() {
+    let cached = cj["cachedUsageUtilization"]["utilization"].as_object().map(|u| {
         let at = (cj["cachedUsageUtilization"]["fetchedAtMs"].as_f64().unwrap_or(0.0) / 1000.0) as i64;
-        let mut l = aged(parse_limits(&Value::Object(u.clone()), at, true), now);
-        if now - at > 6 * 3600 { l.error = Some(format!("{}'s limits are out of date.", a.name)); }
-        else if unreachable { l.note = Some(OFFLINE_NOTE.into()); }
-        return l;
-    }
+        parse_limits(&Value::Object(u.clone()), at, true)
+    });
+    if let Some(l) = held_over(previous, cached, &a.name, expired, unreachable, now) { return l; }
     if unreachable {
         return failed(now, "Couldn't reach Anthropic. Check your connection; Anchor will try again shortly.".into(), false);
     }
@@ -139,6 +149,8 @@ mod tests {
         assert_eq!(l.weekly.unwrap().percent, 7.0);
         assert_eq!(l.fetched_at, 5);
         assert!(parse_limits(&serde_json::json!({"five_hour":{}}), 0, false).five_hour.is_none());
+        let idle = parse_limits(&serde_json::json!({"seven_day":{"utilization":12}}), 0, false);
+        assert_eq!(idle.five_hour, Some(LimitWindow { percent: 0.0, resets_at: None }), "no 5h window running reads as unused");
     }
 
     // These set CLAUDE_ANCHOR_USAGE_URL (process-wide), so they run in one test to avoid racing.
@@ -160,26 +172,33 @@ mod tests {
         let l = fetch(&a, &p, None);
         assert_eq!(l.error.as_deref(), Some("work's sign-in expired. Sign in again.")); assert!(l.needs_sign_in);
 
-        // Fresh cache beats the error; old cache is "out of date".
+        // Any cache beats the error, kept with a note.
         let now_ms = chrono::Utc::now().timestamp_millis();
         let cache = |ms: i64| format!(r#"{{"cachedUsageUtilization":{{"fetchedAtMs":{ms},"utilization":{{"five_hour":{{"utilization":30}}}}}}}}"#);
         std::fs::write(d.join(".claude.json"), cache(now_ms - 60_000)).unwrap();
         let l = fetch(&a, &p, None);
-        assert!(l.error.is_none() && l.stale && l.note.is_none() && l.five_hour.unwrap().percent == 30.0);
+        assert!(l.error.is_none() && l.stale && l.needs_sign_in && l.five_hour.unwrap().percent == 30.0);
+        assert!(l.note.as_deref().unwrap().contains("sign-in token expired"));
         std::fs::write(d.join(".claude.json"), cache(now_ms - 7 * 3600 * 1000)).unwrap();
-        assert_eq!(fetch(&a, &p, None).error.as_deref(), Some("work's limits are out of date."));
+        let l = fetch(&a, &p, None);
+        assert!(l.error.is_none() && l.needs_sign_in && l.five_hour.is_some(), "a lapsed token keeps the old numbers");
+        // An earlier error doesn't hide good numbers.
+        let gone = Limits { five_hour: None, weekly: None, error: Some("x".into()), ..lim(0.0, 0.0) };
+        assert_eq!(fetch(&a, &p, Some(&gone)).five_hour.unwrap().percent, 30.0);
         std::fs::remove_file(d.join(".claude.json")).unwrap();
 
         // Valid token, unreachable server: previous is returned stale with the note; else a connection error.
         let exp = now_ms + 3_600_000;
         std::fs::write(d.join(".credentials.json"), format!(r#"{{"claudeAiOauth":{{"accessToken":"t","expiresAt":{exp}}}}}"#)).unwrap();
-        let prev = lim(50.0, 10.0);
+        let prev = Limits { fetched_at: now_ms / 1000 - 3600, ..lim(50.0, 10.0) };
         let l = fetch(&a, &p, Some(&prev));
         assert!(l.stale && l.note.as_deref() == Some(OFFLINE_NOTE) && l.five_hour.as_ref().unwrap().percent == 50.0);
         let l = fetch(&a, &p, None);
         assert!(l.error.as_deref().unwrap().starts_with("Couldn't reach Anthropic. Check your connection"));
         std::fs::write(d.join(".claude.json"), cache(now_ms - 60_000)).unwrap();
         assert_eq!(fetch(&a, &p, None).note.as_deref(), Some(OFFLINE_NOTE));
+        std::fs::write(d.join(".claude.json"), cache(now_ms - 7 * 3600 * 1000)).unwrap();
+        assert_eq!(fetch(&a, &p, None).note.as_deref(), Some("work's limits are out of date."));
 
         // fetch_all skips pending accounts.
         let mut cfg = Config::default();
