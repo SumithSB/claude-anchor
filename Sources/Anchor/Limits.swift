@@ -27,7 +27,10 @@ extension AppModel {
             guard let w = d[k] as? [String: Any], let u = (w["utilization"] as? NSNumber)?.doubleValue else { return nil }
             return LimitWindow(percent: u, resetsAt: (w["resets_at"] as? String).flatMap(parseDate))
         }
-        return Limits(fiveHour: win("five_hour"), weekly: win("seven_day"), fetchedAt: fetchedAt, stale: stale)
+        let weekly = win("seven_day")
+        // No 5h entry beside a weekly one means no window is running (long idle): nothing used yet, not unknown.
+        let five = win("five_hour") ?? weekly.map { _ in LimitWindow(percent: 0, resetsAt: nil) }
+        return Limits(fiveHour: five, weekly: weekly, fetchedAt: fetchedAt, stale: stale)
     }
 
     /// One missed check (a 429 because Claude Code polls the same endpoint, or a network blip) isn't worth a
@@ -50,6 +53,21 @@ extension AppModel {
     }
 
     nonisolated static let offlineNote = "Couldn't reach Anthropic. Showing the last known usage."
+
+    /// No live numbers (offline, token lapsed while the lid was shut, keychain not ready after wake): the newest
+    /// numbers on hand, the last reading or the CLI's cache, are shown dimmed with a note rather than an error
+    /// that empties the dial. Nil when there is nothing to show.
+    nonisolated static func heldOver(previous: Limits?, cached: Limits?, name: String,
+                                     expired: Bool, unreachable: Bool, now: Date) -> Limits? {
+        guard let best = [previous, cached].compactMap({ $0 }).filter({ $0.fiveHour != nil || $0.weekly != nil })
+            .max(by: { $0.fetchedAt < $1.fetchedAt }) else { return nil }
+        var l = aged(best, now: now)
+        l.stale = true; l.error = nil; l.needsSignIn = expired
+        l.note = expired ? "\(name)'s sign-in token expired. Usage updates the next time Claude Code runs on it."
+            : now.timeIntervalSince(l.fetchedAt) > 6 * 3600 ? "\(name)'s limits are out of date."
+            : unreachable ? offlineNote : nil
+        return l
+    }
 
     /// Live fetch with the CLI's own access token. Never refreshes it (that would rotate the refresh token).
     /// When Anthropic can't be reached, `previous` (or the CLI's cache) is returned marked stale with a note.
@@ -81,20 +99,14 @@ extension AppModel {
                 expired = true
             }
         }
-        if unreachable, let p = keptQuietly(previous, now: now) { return p }
-        if unreachable, let p = previous, p.error == nil, p.fiveHour != nil || p.weekly != nil {
-            var l = aged(p, now: now)
-            l.stale = true; l.note = offlineNote
-            return l
-        }
-        if let c = claudeJSON(for: a)["cachedUsageUtilization"] as? [String: Any],
-           let u = c["utilization"] as? [String: Any] {
+        if let p = keptQuietly(previous, now: now) { return p }
+        let cached = (claudeJSON(for: a)["cachedUsageUtilization"] as? [String: Any]).flatMap { c -> Limits? in
+            guard let u = c["utilization"] as? [String: Any] else { return nil }
             let at = Date(timeIntervalSince1970: ((c["fetchedAtMs"] as? NSNumber)?.doubleValue ?? 0) / 1000)
-            var l = aged(parseLimits(u, fetchedAt: at, stale: true), now: now)
-            if now.timeIntervalSince(at) > 6 * 3600 { l.error = "\(a.name)'s limits are out of date." }
-            else if unreachable { l.note = offlineNote }
-            return l
+            return parseLimits(u, fetchedAt: at, stale: true)
         }
+        if let l = heldOver(previous: previous, cached: cached, name: a.name,
+                            expired: expired, unreachable: unreachable, now: now) { return l }
         if unreachable {
             return Limits(fiveHour: nil, weekly: nil, fetchedAt: now, stale: true,
                           error: "Couldn't reach Anthropic. Check your connection; Anchor will try again shortly.")
@@ -119,6 +131,30 @@ extension AppModel {
                          weekly: LimitWindow(percent: 23, resetsAt: now.addingTimeInterval(3600)), fetchedAt: now, stale: true)
         let ag = aged(old, now: now)
         assert(ag.fiveHour == LimitWindow(percent: 0, resetsAt: nil) && ag.weekly == old.weekly, "a passed reset reads as unused")
+        let idle = parseLimits(["seven_day": ["utilization": 12]], fetchedAt: now, stale: false)
+        assert(idle.fiveHour == LimitWindow(percent: 0, resetsAt: nil) && idle.isFresh, "no 5h window running reads as unused")
+        let hours = live.fetchedAt.addingTimeInterval(3 * 3600)
+        let off = heldOver(previous: live, cached: nil, name: "W", expired: false, unreachable: true, now: hours)
+        assert(off?.fiveHour?.percent == 40 && off?.stale == true && off?.note == offlineNote, "hours offline keeps the dial")
+        let gone = Limits(fiveHour: nil, weekly: nil, fetchedAt: hours, stale: true, error: "x")
+        let fromCache = heldOver(previous: gone, cached: old, name: "W", expired: true, unreachable: false, now: now)
+        assert(fromCache?.weekly?.percent == 23 && fromCache?.error == nil && fromCache?.needsSignIn == true,
+               "an earlier error doesn't hide the cache, and a lapsed token keeps the numbers")
+        let newer = heldOver(previous: live, cached: old, name: "W", expired: false, unreachable: true, now: now)
+        assert(newer?.fiveHour?.percent == 0, "the newer of last reading and cache wins (cache here, aged)")
+        assert(heldOver(previous: old, cached: nil, name: "W", expired: false, unreachable: true,
+                        now: now.addingTimeInterval(7 * 3600))?.note == "W's limits are out of date.")
+        assert(heldOver(previous: gone, cached: nil, name: "W", expired: false, unreachable: true, now: now) == nil)
+        // A temp dir hashes to a keychain service that doesn't exist, so only the file decides here.
+        let tmp = NSTemporaryDirectory() + "anchor-signout-" + UUID().uuidString
+        try? FileManager.default.createDirectory(atPath: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        let t = Account(id: "t", name: "T", flag: .w, dir: tmp)
+        assert(signedOut(t), "no file, no keychain item: signed out")
+        FileManager.default.createFile(atPath: tmp + "/.claude.json", contents: Data(#"{"oauthAccount":{"emailAdd"#.utf8))
+        assert(!signedOut(t), "a file caught mid-write is not a sign-out")
+        FileManager.default.createFile(atPath: tmp + "/.claude.json", contents: Data(#"{"numStartups":3}"#.utf8))
+        assert(signedOut(t), "a clean file without an account is")
         var c = Config()
         c.defaultID = "d"
         c.rules = [Rule(path: "/w", accountID: "a"), Rule(path: "/w/x", accountID: "b", allowOverflow: true)]

@@ -18,8 +18,13 @@ fn read_json(p: PathBuf) -> Value {
 }
 
 /// The account's .claude.json (primary's lives in HOME, others in their config dir). Null when missing.
-pub fn claude_json(a: &Account, paths: &Paths) -> Value {
-    read_json(if is_primary(a, paths) { paths.home.join(".claude.json") } else { PathBuf::from(&a.dir).join(".claude.json") })
+pub fn claude_json(a: &Account, paths: &Paths) -> Value { read_json(claude_json_path(a, paths)) }
+
+fn claude_json_path(a: &Account, paths: &Paths) -> PathBuf {
+    if is_primary(a, paths) { paths.home.join(".claude.json") } else { PathBuf::from(&a.dir).join(".claude.json") }
+}
+fn credentials_path(a: &Account, paths: &Paths) -> PathBuf {
+    if is_primary(a, paths) { paths.primary_dir.join(".credentials.json") } else { PathBuf::from(&a.dir).join(".credentials.json") }
 }
 
 #[cfg(target_os = "macos")]
@@ -47,8 +52,7 @@ fn keychain(_: &Account, _: &Paths) -> Option<Value> { None }
 
 fn credentials(a: &Account, paths: &Paths) -> Option<Value> {
     keychain(a, paths).or_else(|| {
-        let dir = if is_primary(a, paths) { paths.primary_dir.clone() } else { PathBuf::from(&a.dir) };
-        Some(read_json(dir.join(".credentials.json"))).filter(|v| v.is_object())
+        Some(read_json(credentials_path(a, paths))).filter(|v| v.is_object())
     })
 }
 
@@ -65,6 +69,19 @@ pub fn plan(a: &Account, paths: &Paths) -> Option<String> {
 }
 /// Claude Code left an account record or a credential for this dir.
 pub fn signed_in(a: &Account, paths: &Paths) -> bool { email(a, paths).is_some() || credentials(a, paths).is_some() }
+
+/// Definitely signed out: each record is missing or reads cleanly without an account. A file caught mid-write
+/// (Claude Code rewrites both often) is not a sign-out, and treating it as one wiped the account's limits.
+pub fn signed_out(a: &Account, paths: &Paths) -> bool {
+    let clean_without = |p: PathBuf, key: &str| match std::fs::read(p) {
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+        Ok(d) => serde_json::from_slice::<Value>(&d).is_ok_and(|v| v.get(key).is_none()),
+    };
+    // ponytail: on macOS (dev only) a locked Keychain also reads as None; the Swift app checks exit 44 instead.
+    clean_without(claude_json_path(a, paths), "oauthAccount")
+        && clean_without(credentials_path(a, paths), "claudeAiOauth")
+        && keychain(a, paths).is_none()
+}
 
 /// Removes stored credentials outside the account folder (macOS Keychain only; elsewhere a no-op).
 #[allow(unused_variables)]
@@ -109,6 +126,23 @@ mod tests {
         assert_eq!(email(&a, &p).as_deref(), Some("me@x.y"));
         assert_eq!(plan(&a, &p).as_deref(), Some("pro"));
         assert_eq!(config_dir_env(&a, &p), None);
+    }
+
+    #[test]
+    fn half_written_files_are_not_a_sign_out() {
+        let t = tempfile::tempdir().unwrap();
+        let p = Paths::from_home(t.path());
+        let d = t.path().join("acc");
+        std::fs::create_dir_all(&d).unwrap();
+        let a = acct(d.to_str().unwrap());
+        assert!(signed_out(&a, &p), "nothing there");
+        std::fs::write(d.join(".claude.json"), r#"{"oauthAccount":{"emailAdd"#).unwrap();
+        assert!(!signed_out(&a, &p) && !signed_in(&a, &p), "mid-write: neither in nor out");
+        std::fs::write(d.join(".claude.json"), r#"{"numStartups":3}"#).unwrap();
+        std::fs::write(d.join(".credentials.json"), "{").unwrap();
+        assert!(!signed_out(&a, &p));
+        std::fs::write(d.join(".credentials.json"), "{}").unwrap();
+        assert!(signed_out(&a, &p), "clean files without an account");
     }
 
     #[test]

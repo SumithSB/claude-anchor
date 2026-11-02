@@ -356,6 +356,19 @@ private func anchorHotKeyHandler(_ next: EventHandlerCallRef?, _ event: EventRef
         container.onHover = { [weak self] in self?.hover($0) }
         p.contentView = container
         panel = p
+        // A display unplugged, or the lid shut onto an external one, can strand the button off screen. Re-place it
+        // from the saved spot (back where it was once that display returns), without saving the fallback.
+        let replace: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let p = self.panel, let m = self.model, m.config.floatingButton, !self.dragging else { return }
+                p.setFrameOrigin(self.restoredOrigin(m))
+                p.orderFrontRegardless()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main, using: replace)
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+                                                          object: nil, queue: .main, using: replace)
         return p
     }
 
