@@ -380,6 +380,8 @@ Planned, not yet supported:
 
 - **Other coding agents:** Gemini CLI, Cursor Agent and other agent CLIs, with the same folder rules and usage view.
 - **Other providers:** OpenAI, Google and other model providers' accounts and API keys, side by side with Claude accounts.
+- **GitHub accounts:** pick the GitHub account per folder for `git` pushes and the `gh` CLI, using the accounts `gh` is already signed in to. Folder rules only, no usage view.
+- **A more general name:** once the app switches more than Claude accounts, it will be renamed (for example, Anchor Switch).
 
 Ideas and pull requests are welcome in [Issues](https://github.com/SumithSB/claude-anchor/issues).
 
