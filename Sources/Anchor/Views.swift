@@ -84,16 +84,18 @@ struct ClayButtonStyle: ButtonStyle {
 }
 
 /// Small pill segmented control (range and group-by).
-private struct Seg<T: Hashable>: View {
+struct Seg<T: Hashable>: View {
     let label: String
     let options: [(label: String, value: T)]
     @Binding var selection: T
     var fill = false
+    var isEnabled: (T) -> Bool = { _ in true }
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options.indices, id: \.self) { i in
                 let o = options[i]
                 let on = selection == o.value
+                let can = isEnabled(o.value)
                 Button { selection = o.value } label: {
                     Text(o.label).font(.system(size: 11.5, weight: .medium)).lineLimit(1)
                         .padding(.horizontal, 9).frame(height: 22)
@@ -103,7 +105,7 @@ private struct Seg<T: Hashable>: View {
                         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(on ? Clay.hairline : Color.clear, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).disabled(!can).opacity(can ? 1 : 0.45)
                 .accessibilityLabel(o.label)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
@@ -116,7 +118,7 @@ private struct Seg<T: Hashable>: View {
 }
 
 /// Plan / small status pill.
-private struct Pill: View {
+struct Pill: View {
     let text: String
     var tint: Color = .secondary
     var body: some View {
@@ -265,6 +267,14 @@ private struct RoundedWindow: NSViewRepresentable {
     @Environment(\.snapshotMode) private var snapshot
     @Binding var path: [Pane]
     @State private var showAllRows = false
+    @AppStorage("harborTool") private var toolRaw = Tool.claude.rawValue
+
+    /// The Claude | Codex switch only appears once Codex is in play; until then everything is Claude.
+    private var showTool: Bool { !model.codexAccounts.isEmpty || model.codexInstalled }
+    private var tool: Tool { showTool ? (Tool(rawValue: toolRaw) ?? .claude) : .claude }
+    private var accts: [Account] { model.config.accounts(tool) }
+    private var active: Account? { tool == .claude ? model.active : model.activeCodex }
+    private var toolName: String { tool == .claude ? "Claude Code" : "Codex" }
 
     var body: some View {
         Group {
@@ -282,19 +292,24 @@ private struct RoundedWindow: NSViewRepresentable {
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if !model.cliInstalled {
-                emptyState("Claude Code isn't installed.", "Install it, then reopen this menu.", "Open install guide") {
-                    if let u = URL(string: "https://docs.anthropic.com/en/docs/claude-code/setup") { NSWorkspace.shared.open(u) }
+            if showTool {
+                Seg(label: "Tool", options: [("Claude", Tool.claude), ("Codex", Tool.codex)],
+                    selection: Binding(get: { tool }, set: { toolRaw = $0.rawValue }), fill: true)
+            }
+            if !(tool == .claude ? model.cliInstalled : model.codexInstalled) && accts.isEmpty {
+                emptyState("\(toolName) isn't installed.", "Install it, then reopen this menu.", "Open install guide") {
+                    let guide = tool == .claude ? "https://docs.anthropic.com/en/docs/claude-code/setup" : "https://developers.openai.com/codex/cli"
+                    if let u = URL(string: guide) { NSWorkspace.shared.open(u) }
                 }
                 alertCard
-            } else if model.accounts.isEmpty {
+            } else if accts.isEmpty {
                 emptyState("Add an account to start", "Each account keeps its own limits and usage.", "Add account") { path.append(.accounts) }
                 alertCard
             } else {
-                HarborView(width: 340 - 2 * gutter).frame(maxWidth: .infinity)
-                if model.banner != nil { alertCard } else { FreshCard() }
+                HarborView(width: 340 - 2 * gutter, tool: tool).id(tool).frame(maxWidth: .infinity)
+                if model.banner != nil { alertCard } else { FreshCard(tool: tool) }
                 if popout { usageCard; accountCard } else { accountCard; usageCard }
-                ContinueCard()
+                if tool == .claude { ContinueCard() }
             }
             nav
         }
@@ -304,7 +319,7 @@ private struct RoundedWindow: NSViewRepresentable {
     // MARK: header
 
     private var routingText: String {
-        let n = model.accounts.count
+        let n = accts.count
         return "Routing \(n) \(n == 1 ? "account" : "accounts")"
     }
 
@@ -393,10 +408,10 @@ private struct RoundedWindow: NSViewRepresentable {
 
     /// Shown when the default account hasn't signed in yet (first run, or after signing out).
     private func signInBlock(_ a: Account) -> some View {
-        let first = model.accounts.allSatisfy(\.pending)
+        let first = model.config.accounts(a.kind).allSatisfy(\.pending)
         return VStack(alignment: .leading, spacing: 6) {
             Text(first ? "Sign in to get started" : "\(a.name) isn't signed in").font(.callout.weight(.semibold))
-            Text("Anchor reads your Claude Code sign-in to show limits and usage.").font(.subheadline).foregroundStyle(.secondary)
+            Text("Anchor reads your \(a.kind == .codex ? "Codex" : "Claude Code") sign-in to show limits and usage.").font(.subheadline).foregroundStyle(.secondary)
             if model.signingIn.contains(a.id) {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.mini)
@@ -412,7 +427,7 @@ private struct RoundedWindow: NSViewRepresentable {
     // MARK: active account and limits
 
     @ViewBuilder private var accountCard: some View {
-        if let a = model.active {
+        if let a = active {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     FlagView(flag: a.flag, size: 18)
@@ -517,6 +532,7 @@ private struct RoundedWindow: NSViewRepresentable {
             HStack(spacing: 8) {
                 if let id = r.accountID, let a = model.account(id) { FlagView(flag: a.flag, size: 11) }
                 Text(r.label).lineLimit(1).truncationMode(.middle)
+                if let id = r.accountID, model.account(id)?.kind == .codex { Pill(text: "Codex") }
                 Spacer(minLength: 8)
                 Text(compact(r.tokens)).monospacedDigit().fixedSize()
                 if prices {
@@ -595,12 +611,15 @@ private struct Ring: View {
 /// Teal card: another account has an unused 5-hour window.
 @MainActor struct FreshCard: View {
     var compact = false
+    var tool: Tool = .claude
     @Environment(AppModel.self) private var model
-    init(compact: Bool = false) { self.compact = compact }
+    init(compact: Bool = false, tool: Tool = .claude) { self.compact = compact; self.tool = tool }
 
     var body: some View {
-        let fresh = model.freshAccounts
-        if fresh.isEmpty, model.activeIsFresh, let a = model.active {
+        let def = model.config.defaultID(tool)
+        let active = tool == .claude ? model.active : model.activeCodex
+        let fresh = model.config.accounts(tool).filter { !$0.pending && $0.id != def && model.isFresh($0.id) }
+        if fresh.isEmpty, let a = active, model.isFresh(a.id) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(Clay.fresh).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
@@ -838,6 +857,7 @@ struct SwitchRow: View {
 @MainActor struct SettingsPane: View {
     @Environment(AppModel.self) private var model
     @State private var loginOn = SMAppService.mainApp.status == .enabled
+    private var showCodexEditor: Bool { model.codexInstalled || !model.codexAccounts.isEmpty }
 
     private func floating(_ get: @escaping () -> Bool, _ set: @escaping (Bool) -> Void) -> Binding<Bool> {
         Binding(get: get, set: { set($0); model.save(); FloatingController.shared.sync(model) })
@@ -845,7 +865,7 @@ struct SwitchRow: View {
 
     var body: some View {
         PaneScaffold(title: "Settings") {
-            PaneSection(title: "General") {
+            PaneSection(title: "General", footer: showCodexEditor ? "Applies after you reload the VS Code window. Folder rules don't apply inside VS Code." : nil) {
                 SwitchRow("Launch at login", isOn: Binding(get: { loginOn }, set: { on in
                     do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
                     catch { model.banner = "Couldn't change Launch at login: \(AppModel.reason(error)). Run Claude Anchor from the Applications folder and try again." }
@@ -857,6 +877,10 @@ struct SwitchRow: View {
                 SwitchRow("Auto-switch near limit", isOn: Binding(get: { model.config.autoOverflow }, set: { model.config.autoOverflow = $0; model.save() }))
                 RowDivider()
                 SwitchRow("Use in VS Code and Cursor", isOn: Binding(get: { model.config.editorIntegration ?? false }, set: { model.banner = model.setEditorIntegration($0) }))
+                if showCodexEditor {
+                    RowDivider()
+                    SwitchRow("VS Code Codex follows the Codex default", isOn: Binding(get: { model.config.codexEditorIntegration ?? false }, set: { model.banner = model.setCodexEditorIntegration($0) }))
+                }
             }
             PaneSection(title: "Limits", footer: "Live uses more of Anthropic's API. Use Refresh in the header any time.") {
                 PaneRow(title: "Refresh limits") {
@@ -900,39 +924,51 @@ struct SwitchRow: View {
 @MainActor struct RulesPane: View {
     @Environment(AppModel.self) private var model
 
+    private var hasCodex: Bool { !model.codexAccounts.isEmpty }
+    private func active(_ t: Tool) -> Account? { t == .claude ? model.active : model.activeCodex }
+
     var body: some View {
         PaneScaffold(title: "Folder rules") {
-            PaneSection(title: "Folders", footer: "New Claude sessions in a folder, in Terminal or VS Code, use its account. Overflow lets a folder use the default account when its own is near its limit.") {
-                ForEach(Array(model.config.rules.enumerated()), id: \.element.id) { i, r in
-                    if i > 0 { RowDivider() }
-                    ruleRow(r)
-                }
-                if !model.config.rules.isEmpty { RowDivider() }
-                Button { addFolder() } label: {
-                    Label("Add folder", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Choose a folder, or drop one here")
-                .dropDestination(for: URL.self) { urls, _ in addDropped(urls) }
-            }
-            if let d = model.active {
-                PaneSection(title: "Default") {
-                    PaneRow(title: "Every other folder") {
-                        FlagView(flag: d.flag, size: 11)
-                        Text(d.name).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.tail)
+            ForEach(hasCodex ? Tool.allCases : [.claude], id: \.self) { t in
+                let rules = model.config.rules(t)
+                PaneSection(title: hasCodex ? (t == .claude ? "Claude" : "Codex") : "Folders",
+                            footer: t == .claude
+                                ? "New Claude sessions in a folder, in Terminal or VS Code, use its account. Overflow lets a folder use the default account when its own is near its limit."
+                                : "New Codex sessions in a folder, in Terminal, use its account. Overflow lets a folder use the default account when its own is near its limit.") {
+                    ForEach(Array(rules.enumerated()), id: \.element.id) { i, r in
+                        if i > 0 { RowDivider() }
+                        ruleRow(r, tool: t)
                     }
-                    .accessibilityElement(children: .combine)
+                    if !rules.isEmpty { RowDivider() }
+                    Button { addFolder(t) } label: {
+                        Label("Add folder", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
+                            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Choose a folder, or drop one here")
+                    .dropDestination(for: URL.self) { urls, _ in addDropped(urls, t) }
                 }
             }
+            if model.active != nil || model.activeCodex != nil { PaneSection(title: "Default") {
+                ForEach(Array((hasCodex ? Tool.allCases : [.claude]).enumerated()), id: \.element) { i, t in
+                    if let d = active(t) {
+                        if i > 0 { RowDivider() }
+                        PaneRow(title: hasCodex ? (t == .claude ? "Claude, every other folder" : "Codex, every other folder") : "Every other folder") {
+                            FlagView(flag: d.flag, size: 11)
+                            Text(d.name).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.tail)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            } }
         }
     }
 
-    private func ruleRow(_ rule: Rule) -> some View {
+    private func ruleRow(_ rule: Rule, tool t: Tool) -> some View {
         let acct = model.account(rule.accountID)
         let pct = model.limits[rule.accountID]?.fiveHour?.percent ?? 0
         let near = pct >= model.config.overflowThreshold && model.limits[rule.accountID]?.error == nil
-        let fallback = model.active
+        let fallback = active(t)
         let usesFallback = rule.allowOverflow && fallback != nil && fallback?.id != rule.accountID
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -940,15 +976,15 @@ struct SwitchRow: View {
                 Text(abbreviate(rule.path)).font(.system(size: 12.5, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
                 RowMenu(label: "Options for \(abbreviate(rule.path))") {
-                    Button("Remove rule", role: .destructive) { model.removeRule(rule.path) }
+                    Button("Remove rule", role: .destructive) { model.removeRule(rule.path, tool: t) }
                 }
             }
             HStack(spacing: 8) {
                 Menu {
-                    ForEach(model.accounts) { a in
+                    ForEach(model.config.accounts(t)) { a in
                         Button {
-                            model.removeRule(rule.path); model.addRule(path: rule.path, accountID: a.id)
-                            if rule.allowOverflow { model.setRuleOverflow(rule.path, true) }
+                            model.removeRule(rule.path, tool: t); model.addRule(path: rule.path, accountID: a.id, tool: t)
+                            if rule.allowOverflow { model.setRuleOverflow(rule.path, true, tool: t) }
                         } label: { Label { Text(a.name) } icon: { FlagView(flag: a.flag, size: 11) } }
                     }
                 } label: {
@@ -961,7 +997,7 @@ struct SwitchRow: View {
                 .accessibilityLabel("Account for \(abbreviate(rule.path)): \(acct?.name ?? "none")")
                 Spacer(minLength: 8)
                 Text("Overflow").font(.system(size: 12)).foregroundStyle(.secondary)
-                Toggle("Allow overflow for \(abbreviate(rule.path))", isOn: Binding(get: { rule.allowOverflow }, set: { model.setRuleOverflow(rule.path, $0) }))
+                Toggle("Allow overflow for \(abbreviate(rule.path))", isOn: Binding(get: { rule.allowOverflow }, set: { model.setRuleOverflow(rule.path, $0, tool: t) }))
                     .labelsHidden().toggleStyle(.switch).controlSize(.small)
             }
             if near, let acct {
@@ -980,24 +1016,24 @@ struct SwitchRow: View {
         .padding(.vertical, 10)
     }
 
-    private func addDropped(_ urls: [URL]) -> Bool {
-        guard let id = model.active?.id ?? model.accounts.first?.id else { return false }
+    private func addDropped(_ urls: [URL], _ t: Tool) -> Bool {
+        guard let id = active(t)?.id ?? model.config.accounts(t).first?.id else { return false }
         var added = false
         for u in urls {
             var isDir: ObjCBool = false
             if FileManager.default.fileExists(atPath: u.path, isDirectory: &isDir), isDir.boolValue {
-                model.addRule(path: u.path, accountID: id); added = true
+                model.addRule(path: u.path, accountID: id, tool: t); added = true
             }
         }
         return added
     }
 
-    private func addFolder() {
+    private func addFolder(_ t: Tool) {
         let p = NSOpenPanel()
         p.canChooseDirectories = true; p.canChooseFiles = false; p.allowsMultipleSelection = false
         p.prompt = "Add folder"
-        if p.runModal() == .OK, let u = p.url, let id = model.active?.id ?? model.accounts.first?.id {
-            model.addRule(path: u.path, accountID: id)
+        if p.runModal() == .OK, let u = p.url, let id = active(t)?.id ?? model.config.accounts(t).first?.id {
+            model.addRule(path: u.path, accountID: id, tool: t)
         }
     }
 }

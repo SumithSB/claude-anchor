@@ -60,6 +60,12 @@ for d in Code Cursor "Code - Insiders"; do
     cp "$f" "$f.anchor-uninstall-bak"
     grep -v 'claudeProcessWrapper.*\.claude-anchor' "$f.anchor-uninstall-bak" > "$f" || true
   fi
+  # Codex: only a value ending in our wrapper path. Its own backup, so the Claude backup above is not overwritten.
+  if [ -f "$f" ] && grep -qE '"chatgpt\.cliExecutable"[[:space:]]*:[[:space:]]*"[^"]*/\.claude-anchor/bin/codex-wrapper"' "$f"; then
+    step "Removing Codex wrapper setting from $f (backup: $f.anchor-codex-uninstall-bak)"
+    cp "$f" "$f.anchor-codex-uninstall-bak"
+    grep -vE '"chatgpt\.cliExecutable"[[:space:]]*:[[:space:]]*"[^"]*/\.claude-anchor/bin/codex-wrapper"' "$f.anchor-codex-uninstall-bak" > "$f" || true
+  fi
 done
 
 if [ -d "$AHOME" ]; then

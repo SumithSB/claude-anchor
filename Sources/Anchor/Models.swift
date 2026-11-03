@@ -11,7 +11,12 @@ enum Paths {
     static let config = anchor + "/config.json"
     static let routes = anchor + "/routes"                // read by shell/anchor.zsh
     static let usage = anchor + "/usage.json"
+    static let codexPrimaryDir = home + "/.codex"        // Codex account that never sets CODEX_HOME
+    static let codexAccounts = anchor + "/codex-accounts"
+    static let codexRoutes = anchor + "/codex-routes"     // read by shell/anchor.zsh
 }
+
+enum Tool: String, Codable, CaseIterable { case claude, codex }
 
 /// International Code of Signals letters used as account identity.
 enum SignalFlag: String, Codable, CaseIterable, Identifiable {
@@ -28,8 +33,11 @@ struct Account: Codable, Identifiable, Hashable {
     var email: String?
     var plan: String?         // e.g. "pro", "max"
     var pending: Bool = false // created, sign-in not finished
+    var tool: Tool?           // optional so older config.json still decodes; nil means Claude
+    var accountID: String?    // ChatGPT account id, Codex only (one email can have several workspaces)
 
-    var isPrimary: Bool { dir == Paths.primaryDir }
+    var kind: Tool { tool ?? .claude }
+    var isPrimary: Bool { dir == Paths.primaryDir || dir == Paths.codexPrimaryDir }
     /// Value for CLAUDE_CONFIG_DIR, nil for primary (setting it would change the keychain service name).
     var configDirEnv: String? { isPrimary ? nil : dir }
 }
@@ -59,6 +67,11 @@ struct Config: Codable {
     var floatingX: Double?                    // last position, screen points (bottom-left origin)
     var floatingY: Double?
     var showAPIPrices: Bool?                  // nil: only when an account pays per token (no subscription plan)
+    // Codex lives in its own keys so older readers, which only know the Claude lists, never see it.
+    var codexAccounts: [Account] = []
+    var codexRules: [Rule] = []
+    var codexDefaultID: String = "codex"
+    var codexEditorIntegration: Bool?         // VS Code's Codex extension follows the Codex default; off unless opted in
 }
 
 extension Config {
@@ -82,7 +95,19 @@ extension Config {
         floatingX = try c.decodeIfPresent(Double.self, forKey: .floatingX)
         floatingY = try c.decodeIfPresent(Double.self, forKey: .floatingY)
         showAPIPrices = try c.decodeIfPresent(Bool.self, forKey: .showAPIPrices)
+        // The list decides the tool; a hand-edited entry without "tool" must never pass for a Claude account.
+        codexAccounts = (try c.decodeIfPresent([Account].self, forKey: .codexAccounts) ?? []).map { var a = $0; a.tool = .codex; return a }
+        codexRules = try c.decodeIfPresent([Rule].self, forKey: .codexRules) ?? []
+        codexDefaultID = try c.decodeIfPresent(String.self, forKey: .codexDefaultID) ?? "codex"
+        codexEditorIntegration = try c.decodeIfPresent(Bool.self, forKey: .codexEditorIntegration)
     }
+
+    func accounts(_ t: Tool) -> [Account] { t == .claude ? accounts : codexAccounts }
+    func rules(_ t: Tool) -> [Rule] { t == .claude ? rules : codexRules }
+    func defaultID(_ t: Tool) -> String { t == .claude ? defaultID : codexDefaultID }
+    mutating func setAccounts(_ v: [Account], _ t: Tool) { if t == .claude { accounts = v } else { codexAccounts = v } }
+    mutating func setRules(_ v: [Rule], _ t: Tool) { if t == .claude { rules = v } else { codexRules = v } }
+    mutating func setDefaultID(_ v: String, _ t: Tool) { if t == .claude { defaultID = v } else { codexDefaultID = v } }
 }
 
 struct LimitWindow: Codable, Hashable {
@@ -137,6 +162,7 @@ final class AppModel {
     var banner: String?                      // last overflow / error message shown in popover
     var signingIn: Set<String> = []          // accounts with a browser sign-in in progress
     var cliInstalled = true                  // Claude Code CLI found; rechecked each time the popover opens
+    var codexInstalled = true                // Codex CLI found (same recheck)
     var live = true                          // false for snapshot models: never touch real files
     var saveBlocked = false                  // config.json exists but couldn't be backed up; don't overwrite it
     var isRefreshing = false                 // a limits refresh is in flight (drives the refresh button spinner)
@@ -145,9 +171,11 @@ final class AppModel {
 
     let usage = UsageIndex()
 
-    var accounts: [Account] { config.accounts }
+    var accounts: [Account] { config.accounts }       // Claude only; see codexAccounts
+    var codexAccounts: [Account] { config.codexAccounts }
     var active: Account? { config.accounts.first { $0.id == config.defaultID } ?? config.accounts.first }
-    func account(_ id: String) -> Account? { config.accounts.first { $0.id == id } }
+    var activeCodex: Account? { config.codexAccounts.first { $0.id == config.codexDefaultID } ?? config.codexAccounts.first }
+    func account(_ id: String) -> Account? { config.accounts.first { $0.id == id } ?? config.codexAccounts.first { $0.id == id } }
 
     /// Dollar estimates mean something only at API rates; on a subscription they read like a bill nobody pays.
     var showsAPIPrices: Bool { config.showAPIPrices ?? accounts.contains { !$0.pending && $0.plan == nil } }

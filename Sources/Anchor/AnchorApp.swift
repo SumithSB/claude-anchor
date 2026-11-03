@@ -16,6 +16,8 @@ import AppKit
             UsageIndex.selfTest()
             AppModel.selfTest()
             AppModel.wrapperSelfTest()
+            AppModel.codexWrapperSelfTest()
+            AppModel.codexAccountsSelfTest()
             exit(0)
         }
         MainActor.assumeIsolated { AnchorApp.main() }
@@ -110,6 +112,13 @@ extension AppModel {
         shoot(six, dark: false, to: prefix + "-accounts.png", view: AnyView(AccountsPane()))
         shoot(six, dark: false, to: prefix + "-rules.png", view: AnyView(RulesPane()))
         shoot(three, dark: false, to: prefix + "-settings.png", view: AnyView(SettingsPane()))
+        let both = withCodex(), d = UserDefaults.standard
+        d.set("claude", forKey: "harborTool"); shoot(both, dark: false, to: prefix + "-tool-claude.png")
+        d.set("codex", forKey: "harborTool"); shoot(both, dark: false, to: prefix + "-tool-codex.png")
+        shoot(both, dark: false, to: prefix + "-accounts-codex.png", view: AnyView(AccountsPane()))
+        shoot(both, dark: false, to: prefix + "-rules-codex.png", view: AnyView(RulesPane()))
+        shoot(both, dark: false, to: prefix + "-settings-codex.png", view: AnyView(SettingsPane()))
+        d.removeObject(forKey: "harborTool")
         shoot(freshScenario(), dark: false, to: prefix + "-fresh.png")
         shoot(freshScenario(), dark: true, to: prefix + "-fresh-dark.png")
         shoot(six, dark: false, to: prefix + "-popout.png", view: AnyView(PopoverView(popout: true)), width: 400, height: 760)
@@ -175,6 +184,20 @@ extension AppModel {
         let m = fake(six: false)
         m.limits["personal"] = Limits(fiveHour: LimitWindow(percent: 0, resetsAt: nil),
                                       weekly: LimitWindow(percent: 3, resetsAt: Date().addingTimeInterval(2 * 86_400)), fetchedAt: Date())
+        return m
+    }
+
+    /// Claude demo plus two Codex accounts, so both harbor states render.
+    static func withCodex() -> AppModel {
+        let m = fake(six: false)
+        m.config.codexAccounts = [Account(id: "codex", name: "Personal", flag: .p, dir: Paths.codexPrimaryDir, email: "you@example.com", plan: "plus", tool: .codex),
+                                  Account(id: "codex-work", name: "Work", flag: .w, dir: Paths.codexAccounts + "/codex-work", email: "you@work.example", plan: "pro", tool: .codex)]
+        m.config.codexDefaultID = "codex"
+        let now = Date()
+        m.limits["codex"] = Limits(fiveHour: LimitWindow(percent: 34, resetsAt: now.addingTimeInterval(5000)), weekly: LimitWindow(percent: 12, resetsAt: now.addingTimeInterval(3 * 86_400)), fetchedAt: now)
+        m.limits["codex-work"] = Limits(fiveHour: LimitWindow(percent: 0, resetsAt: nil), weekly: LimitWindow(percent: 5, resetsAt: now.addingTimeInterval(3 * 86_400)), fetchedAt: now)
+        m.config.codexRules = [Rule(path: Paths.home + "/code/api", accountID: "codex-work")]
+        m.usageRows.append(UsageRow(id: "codex", label: "Personal", accountID: "codex", tokens: 90_000, outputTokens: 9_000, cost: 0))
         return m
     }
 

@@ -1,9 +1,21 @@
 import Foundation
 
-/// Incremental token/cost index over every account's Claude Code transcripts.
+/// Newest `rate_limits` seen in a Codex rollout: numbers only. `at` is the event time (epoch s).
+struct CodexLimitSnapshot: Codable, Hashable {
+    struct Window: Codable, Hashable { var percent: Double, minutes: Int, resetsAt: Double }
+    var primary: Window?, secondary: Window?
+    var plan: String?
+    var at: Double
+}
+
+/// Incremental token/cost index over every account's Claude Code transcripts and Codex rollouts.
 final class UsageIndex: @unchecked Sendable {
     private struct Agg: Codable { var input = 0, output = 0, cacheRead = 0, cacheWrite = 0; var cost = 0.0 }
-    private struct FileState: Codable { var offset: UInt64; var size: UInt64; var inode: UInt64 }
+    /// Codex `total_token_usage` as of the last line read; the next event counts only the difference.
+    private struct Tot: Codable { var input = 0, cached = 0, write = 0, output = 0, total = 0 }
+    /// cwd, model and lastTotal (Codex only) let a read that starts mid-file keep its context.
+    private struct FileState: Codable { var offset: UInt64; var size: UInt64; var inode: UInt64
+                                        var cwd: String?; var model: String?; var lastTotal: Tot? }
     private struct Last: Codable { var cwd: String; var accountID: String; var ts: Double; var file: String?; var editor: Bool? }
     private struct State: Codable {
         var agg: [String: Agg] = [:]       // "day\u{1F}account\u{1F}cwd\u{1F}model"
@@ -11,9 +23,11 @@ final class UsageIndex: @unchecked Sendable {
         var recent: [String] = []          // last dedup keys, so a rescan after truncation doesn't double count
         var last: Last?
         var pricing: Int?                  // price table the stored costs were computed with
+        var codexLimits: [String: CodexLimitSnapshot]?   // accountID -> newest by event time
     }
     private struct Rec { var key: String, day: String, cwd: String, model: String, ts: Double, editor: Bool
-                         var input: Int, output: Int, cacheRead: Int, cacheWrite: Int, cacheWrite1h: Int }
+                         var input: Int, output: Int, cacheRead: Int, cacheWrite: Int, cacheWrite1h: Int
+                         var codex = false, lim: CodexLimitSnapshot? = nil }
 
     private static let pricingVersion = 2
 
@@ -31,6 +45,11 @@ final class UsageIndex: @unchecked Sendable {
     var lastSession: LastSession? {
         lock.lock(); defer { lock.unlock() }
         return state.last.map { ($0.cwd, $0.accountID, $0.file, $0.editor ?? false) }
+    }
+
+    func codexLimits(for accountID: String) -> CodexLimitSnapshot? {
+        lock.lock(); defer { lock.unlock() }
+        return state.codexLimits?[accountID]
     }
 
     /// Marks a copied transcript as already read, so its history never counts as the target account's usage.
@@ -103,12 +122,17 @@ final class UsageIndex: @unchecked Sendable {
     }
 
     static func cost(model: String, input: Int, output: Int, cacheRead: Int, cacheWrite5m: Int, cacheWrite1h: Int) -> Double {
+        let m = model.lowercased()
+        if m.hasPrefix("gpt") || m.hasPrefix("codex") { return 0 }   // never bill GPT models at Claude prices
         let p = price(model, prompt: input + cacheRead + cacheWrite5m + cacheWrite1h)
         return (Double(input) * p.input + Double(output) * p.output + Double(cacheRead) * p.read
                 + Double(cacheWrite5m) * p.input * 1.25 + Double(cacheWrite1h) * p.input * 2) / 1e6
     }
 
     static func prettyModel(_ id: String) -> String {
+        if id.lowercased().hasPrefix("gpt-") {   // "gpt-6-sol" -> "GPT 6 Sol"
+            return id.split(separator: "-").enumerated().map { $0.offset == 0 ? "GPT" : $0.element.capitalized }.joined(separator: " ")
+        }
         var parts = id.hasPrefix("claude-") ? String(id.dropFirst(7)).split(separator: "-").map(String.init) : []
         if let l = parts.last, l.count == 8, l.allSatisfy(\.isNumber) { parts.removeLast() }
         guard let fam = parts.first, fam.allSatisfy(\.isLetter) else { return id }
@@ -119,24 +143,32 @@ final class UsageIndex: @unchecked Sendable {
 
     // MARK: scan
 
-    func scan(accounts: [Account]) {
+    func scan(accounts: [Account], codexAccounts: [Account] = []) {
         scanGate.lock(); defer { scanGate.unlock() }
         applyLedger()
         let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let iso2 = ISO8601DateFormatter()
         let dayFmt = DateFormatter(); dayFmt.locale = Locale(identifier: "en_US_POSIX"); dayFmt.dateFormat = "yyyy-MM-dd"
         let fm = FileManager.default
-        for acct in accounts {
-            let root = acct.dir + "/projects"
+        for (acct, codex) in accounts.map({ ($0, false) }) + codexAccounts.map({ ($0, true) }) {
+            let root = acct.dir + (codex ? "/sessions" : "/projects")   // not archived_sessions
             guard let en = fm.enumerator(atPath: root) else { continue }
             for case let rel as String in en where rel.hasSuffix(".jsonl") {
+                if codex, !((rel as NSString).lastPathComponent.hasPrefix("rollout-")) { continue }
                 let path = root + "/" + rel
                 guard let at = try? fm.attributesOfItem(atPath: path),
                       let size = (at[.size] as? NSNumber)?.uint64Value else { continue }
                 let inode = (at[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
                 lock.lock(); var fs = state.files[path] ?? FileState(offset: 0, size: 0, inode: inode); lock.unlock()
-                if fs.inode != inode || size < fs.offset { fs.offset = 0 }   // rotated or truncated
+                if fs.inode != inode || size < fs.offset { fs.offset = 0; fs.cwd = nil; fs.model = nil; fs.lastTotal = nil }   // rotated or truncated
                 if size == fs.offset { fs.size = size; fs.inode = inode; setFile(path, fs); continue }
+                if codex {
+                    var ctx = fs
+                    readNew(path: path, acct: acct.id, from: fs.offset, size: size, inode: inode, keep: { $0.cwd = ctx.cwd; $0.model = ctx.model; $0.lastTotal = ctx.lastTotal }) { line in
+                        Self.parseCodex(line, &ctx, iso, iso2, dayFmt)
+                    }
+                    continue
+                }
                 readNew(path: path, acct: acct.id, from: fs.offset, size: size, inode: inode) { line in
                     Self.parse(line, iso, iso2, dayFmt)
                 }
@@ -163,7 +195,7 @@ final class UsageIndex: @unchecked Sendable {
 
     /// Reads [from, size) in chunks, processing only complete lines; offset advances per chunk.
     private func readNew(path: String, acct: String, from: UInt64, size: UInt64, inode: UInt64,
-                         parse: (UnsafeRawBufferPointer) -> Rec?) {
+                         keep: (inout FileState) -> Void = { _ in }, parse: (UnsafeRawBufferPointer) -> Rec?) {
         guard let fh = FileHandle(forReadingAtPath: path) else { return }
         defer { try? fh.close() }
         var offset = from
@@ -190,7 +222,8 @@ final class UsageIndex: @unchecked Sendable {
             carry.removeSubrange(carry.startIndex..<carry.startIndex + n)
             lock.lock()
             for r in recs { apply(r, acct: acct, file: path) }
-            state.files[path] = FileState(offset: offset, size: size, inode: inode)
+            var fs = FileState(offset: offset, size: size, inode: inode); keep(&fs)
+            state.files[path] = fs
             dirty = true
             lock.unlock()
         }
@@ -217,15 +250,72 @@ final class UsageIndex: @unchecked Sendable {
                     cacheRead: n("cache_read_input_tokens"), cacheWrite: write, cacheWrite1h: min(write1h, write))
     }
 
-    private func apply(_ r: Rec, acct: String, file: String) {   // lock held
-        if r.ts >= (state.last?.ts ?? 0) { state.last = Last(cwd: r.cwd, accountID: acct, ts: r.ts, file: file, editor: r.editor) }
-        if r.key.isEmpty || r.key == "|" || !seen.insert(r.key).inserted { return }
-        state.recent.append(r.key)
-        if state.recent.count > Self.maxRecent * 2 {
-            state.recent.removeFirst(state.recent.count - Self.maxRecent)
-            seen = Set(state.recent)
+    /// One Codex rollout line. Only numbers, cwd, model and timestamps are read; conversation lines
+    /// (response_item etc.) are skipped unparsed and nothing else is ever kept.
+    private static func parseCodex(_ line: UnsafeRawBufferPointer, _ ctx: inout FileState, _ iso: ISO8601DateFormatter,
+                                   _ iso2: ISO8601DateFormatter, _ dayFmt: DateFormatter) -> Rec? {
+        func has(_ s: StaticString) -> Bool { memmem(line.baseAddress, line.count, s.utf8Start, s.utf8CodeUnitCount) != nil }
+        guard line.count > 2, line.baseAddress != nil, has("\"session_meta\"") || has("\"turn_context\"") || has("\"token_count\""),
+              let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+              let type = o["type"] as? String, let p = o["payload"] as? [String: Any] else { return nil }
+        if type == "session_meta" || type == "turn_context" {
+            if let c = p["cwd"] as? String { ctx.cwd = c }
+            if type == "turn_context", let m = p["model"] as? String { ctx.model = m }
+            return nil
         }
-        let cost = Self.cost(model: r.model, input: r.input, output: r.output, cacheRead: r.cacheRead,
+        guard type == "event_msg", p["type"] as? String == "token_count",
+              let tsStr = o["timestamp"] as? String, let date = iso.date(from: tsStr) ?? iso2.date(from: tsStr) else { return nil }
+        func num(_ d: [String: Any]?, _ k: String) -> Int { max(0, (d?[k] as? NSNumber)?.intValue ?? 0) }
+        func tot(_ d: [String: Any]?) -> Tot {
+            Tot(input: num(d, "input_tokens"), cached: num(d, "cached_input_tokens"), write: num(d, "cache_write_input_tokens"),
+                output: num(d, "output_tokens"), total: num(d, "total_tokens"))
+        }
+        func win(_ k: String, _ d: [String: Any]) -> CodexLimitSnapshot.Window? {
+            guard let w = d[k] as? [String: Any], let u = (w["used_percent"] as? NSNumber)?.doubleValue,
+                  let m = (w["window_minutes"] as? NSNumber)?.intValue, let r = (w["resets_at"] as? NSNumber)?.doubleValue else { return nil }
+            return .init(percent: u, minutes: m, resetsAt: r)
+        }
+        var rec = Rec(key: "", day: dayFmt.string(from: date), cwd: ctx.cwd ?? "unknown", model: ctx.model ?? "gpt",
+                      ts: date.timeIntervalSince1970, editor: false, input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
+                      cacheWrite1h: 0, codex: true)
+        if let rl = p["rate_limits"] as? [String: Any] {
+            let a = win("primary", rl), b = win("secondary", rl)
+            if a != nil || b != nil {
+                rec.lim = CodexLimitSnapshot(primary: a, secondary: b, plan: (rl["plan_type"] as? String).map { String($0.prefix(24)) },
+                                             at: rec.ts)
+            }
+        }
+        if let info = p["info"] as? [String: Any], let total = info["total_token_usage"] as? [String: Any] {
+            let cur = tot(total)
+            var d = cur
+            if let prev = ctx.lastTotal {
+                if cur.total < prev.total { d = tot(info["last_token_usage"] as? [String: Any]) }   // counter restarted
+                else { d = Tot(input: max(0, cur.input - prev.input), cached: max(0, cur.cached - prev.cached),
+                               write: max(0, cur.write - prev.write), output: max(0, cur.output - prev.output)) }
+            }
+            ctx.lastTotal = cur
+            rec.input = max(0, d.input - d.cached); rec.cacheRead = d.cached; rec.cacheWrite = d.write; rec.output = d.output
+        }
+        return rec
+    }
+
+    private func apply(_ r: Rec, acct: String, file: String) {   // lock held
+        if r.codex {
+            if let l = r.lim, l.at >= (state.codexLimits?[acct]?.at ?? 0) {   // by event time: resumed sessions append to old files
+                state.codexLimits = (state.codexLimits ?? [:]).merging([acct: l]) { $1 }
+            }
+            if r.input + r.output + r.cacheRead + r.cacheWrite == 0 { return }
+        } else {
+            if r.ts >= (state.last?.ts ?? 0) { state.last = Last(cwd: r.cwd, accountID: acct, ts: r.ts, file: file, editor: r.editor) }
+            if r.key.isEmpty || r.key == "|" || !seen.insert(r.key).inserted { return }
+            state.recent.append(r.key)
+            if state.recent.count > Self.maxRecent * 2 {
+                state.recent.removeFirst(state.recent.count - Self.maxRecent)
+                seen = Set(state.recent)
+            }
+        }
+        // ponytail: no GPT price table; add one when someone pays Codex per token
+        let cost = r.codex ? 0 : Self.cost(model: r.model, input: r.input, output: r.output, cacheRead: r.cacheRead,
                              cacheWrite5m: r.cacheWrite - r.cacheWrite1h, cacheWrite1h: r.cacheWrite1h)
         let k = [r.day, acct, r.cwd, r.model].joined(separator: Self.sep)
         var a = state.agg[k] ?? Agg()
@@ -256,6 +346,7 @@ final class UsageIndex: @unchecked Sendable {
         lock.lock()
         state.agg = state.agg.filter { $0.key.components(separatedBy: Self.sep).dropFirst().first != accountID }
         if state.last?.accountID == accountID { state.last = nil }
+        state.codexLimits?[accountID] = nil
         lock.unlock()
         persist()
     }
@@ -294,7 +385,8 @@ final class UsageIndex: @unchecked Sendable {
         assert(prettyModel("claude-opus-5-5") == "Opus 5.5")
         assert(prettyModel("claude-sonnet-4-5-20250929") == "Sonnet 4.5")
         assert(prettyModel("claude-haiku-5-5") == "Haiku 5.5")
-        assert(prettyModel("gpt-4") == "gpt-4")
+        assert(prettyModel("gpt-6-sol") == "GPT 6 Sol" && prettyModel("gpt-5.4") == "GPT 5.4" && prettyModel("gpt-5.4-mini") == "GPT 5.4 Mini")
+        assert(cost(model: "gpt-6-sol", input: 1_000_000, output: 1_000_000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0) == 0)
 
         let tmp = NSTemporaryDirectory() + "anchor-usage-\(UUID().uuidString)"
         let dir = tmp + "/acct/projects/p"
@@ -379,6 +471,58 @@ final class UsageIndex: @unchecked Sendable {
             .write(toFile: old, atomically: true, encoding: .utf8)
         let rep = UsageIndex(storePath: old).rows(by: .model, days: 400, accounts: [acct], removed: [:])
         assert(rep.count == 1 && near(rep[0].cost, 20 + 0.2 + 8), "re-priced: \(rep)")
+
+        // Codex rollouts: synthetic fixtures; the conversation marker must never reach the index.
+        let cx = Account(id: "cx", name: "C", flag: .b, dir: tmp + "/cx", tool: .codex)
+        let day1 = tmp + "/cx/sessions/2026/09/13", day0 = tmp + "/cx/sessions/2026/09/01"
+        try? FileManager.default.createDirectory(atPath: day1, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: day0, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: tmp + "/cx/archived_sessions", withIntermediateDirectories: true)
+        let fmt = ISO8601DateFormatter(); fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        func at(_ back: Double) -> String { fmt.string(from: Date().addingTimeInterval(-back)) }
+        let epoch = Date().timeIntervalSince1970
+        func rl(_ p5: Int, _ p7: Int, reset: Double) -> String {
+            #"{"primary":{"used_percent":\#(p5).0,"window_minutes":300,"resets_at":\#(Int(reset))},"secondary":{"used_percent":\#(p7).0,"window_minutes":10080,"resets_at":\#(Int(reset) + 9999)},"plan_type":"plus"}"#
+        }
+        func tc(_ back: Double, _ i: Int, _ c: Int, _ o: Int, _ limits: String) -> String {
+            #"{"timestamp":"\#(at(back))","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(i),"cached_input_tokens":\#(c),"cache_write_input_tokens":0,"output_tokens":\#(o),"reasoning_output_tokens":0,"total_tokens":\#(i + o)},"last_token_usage":{"input_tokens":1}},"rate_limits":\#(limits)}}"#
+        }
+        let marker = "ANCHOR-SECRET-MARKER"
+        let meta = #"{"timestamp":"\#(at(900))","type":"session_meta","payload":{"cwd":"/c/p","note":"\#(marker)"}}"#
+        let tctx = #"{"timestamp":"\#(at(899))","type":"turn_context","payload":{"cwd":"/c/p","model":"gpt-6-sol"}}"#
+        let resp = #"{"timestamp":"\#(at(898))","type":"response_item","payload":{"type":"message","content":[{"text":"\#(marker) token_count"}]}}"#
+        let nul = #"{"timestamp":"\#(at(800))","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":null}}"#
+        let noRL = tc(790, 100, 40, 10, "null")
+        let f1 = day1 + "/rollout-1.jsonl", f2 = day0 + "/rollout-2.jsonl"
+        try? [meta, tctx, resp, nul, noRL, tc(780, 100, 40, 10, rl(5, 19, reset: epoch + 3600)), tc(700, 150, 60, 20, rl(5, 19, reset: epoch + 3600))]
+            .joined(separator: "\n").appending("\n").write(toFile: f1, atomically: true, encoding: .utf8)
+        try? "{}".write(toFile: tmp + "/cx/archived_sessions/rollout-x.jsonl", atomically: true, encoding: .utf8)
+        let cstore = tmp + "/store3/usage.json"
+        let ix3 = UsageIndex(storePath: cstore)
+        ix3.scan(accounts: [], codexAccounts: [cx])
+        func ctotal() -> Int { ix3.rows(by: .model, days: 1, accounts: [cx], removed: [:]).reduce(0) { $0 + $1.tokens } }
+        assert(ctotal() == 110 + 60, "codex delta counts a repeated total once: \(ctotal())")
+        assert(ix3.codexLimits(for: "cx")?.primary?.percent == 5 && ix3.lastSession == nil, "limits kept; codex never feeds lastSession")
+        // Second chunk, no context lines: cwd and model come from the stored file state.
+        let h4 = FileHandle(forWritingAtPath: f1)!
+        h4.seekToEndOfFile(); h4.write((tc(600, 200, 60, 30, rl(6, 20, reset: epoch + 3600)) + "\n").data(using: .utf8)!); try? h4.close()
+        ix3.scan(accounts: [], codexAccounts: [cx])
+        let mrows = ix3.rows(by: .model, days: 1, accounts: [cx], removed: [:]), prows = ix3.rows(by: .project, days: 1, accounts: [cx], removed: [:])
+        assert(mrows.count == 1 && mrows[0].label == "GPT 6 Sol" && prows.count == 1 && prows[0].label == "/c/p" && ctotal() == 170 + 60,
+               "context survives an incremental read: \(mrows) \(prows)")
+        assert(mrows[0].cost == 0, "no GPT price table")
+        // An older-dated file written later: the newer event wins, and an older event appended later doesn't.
+        try? [tc(10, 10, 0, 1, rl(9, 30, reset: epoch + 3600))].joined().appending("\n").write(toFile: f2, atomically: true, encoding: .utf8)
+        ix3.scan(accounts: [], codexAccounts: [cx])
+        assert(ix3.codexLimits(for: "cx")?.primary?.percent == 9, "newest event wins, not the newest path")
+        let h5 = FileHandle(forWritingAtPath: f2)!
+        h5.seekToEndOfFile(); h5.write((tc(5000, 20, 0, 2, rl(77, 77, reset: epoch + 3600)) + "\n").data(using: .utf8)!); try? h5.close()
+        ix3.scan(accounts: [], codexAccounts: [cx])
+        assert(ix3.codexLimits(for: "cx")?.primary?.percent == 9, "an older event appended later loses")
+        let saved = FileManager.default.contents(atPath: cstore) ?? Data()
+        assert(!saved.isEmpty && saved.range(of: Data(marker.utf8)) == nil && saved.range(of: Data("Sol".utf8)) == nil, "no conversation text in usage.json")
+        ix3.purge(accountID: "cx")
+        assert(ix3.codexLimits(for: "cx") == nil, "purge drops the snapshot")
         print("Usage selfTest OK")
     }
 }

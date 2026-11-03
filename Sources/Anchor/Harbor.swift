@@ -131,6 +131,7 @@ private struct HarborScrollCatcher: NSViewRepresentable {
     @FocusState private var focused: Bool
 
     var width: CGFloat
+    var tool: Tool = .claude
     var onAdd: (() -> Void)?     // makes the dashed "Add" ghost berth tappable; nil leaves it decorative
 
     @State private var pos: CGPoint?              // anchor eye centre in content coordinates; nil = resting at the default
@@ -153,15 +154,16 @@ private struct HarborScrollCatcher: NSViewRepresentable {
     private static let berthH: CGFloat = 76
     private static let waterY: CGFloat = 66
 
-    init(width: CGFloat = 316, onAdd: (() -> Void)? = nil) {
+    init(width: CGFloat = 316, tool: Tool = .claude, onAdd: (() -> Void)? = nil) {
         self.width = width
+        self.tool = tool
         self.onAdd = onAdd
     }
 
     // MARK: derived state
 
-    private var berths: [Account] { model.accounts.filter { !$0.pending } }
-    private var activeIdx: Int { berths.firstIndex { $0.id == model.config.defaultID } ?? 0 }
+    private var berths: [Account] { model.config.accounts(tool).filter { !$0.pending } }
+    private var activeIdx: Int { berths.firstIndex { $0.id == model.config.defaultID(tool) } ?? 0 }
     private var layout: HarborLayout { HarborLayout(n: berths.count, W: width) }
 
     private func clampPan(_ p: CGFloat, _ L: HarborLayout) -> CGFloat { max(0, min(L.maxPan, p)) }
@@ -235,7 +237,7 @@ private struct HarborScrollCatcher: NSViewRepresentable {
             swell = false
         }
         .onDisappear { motion?.cancel(); edge?.cancel(); pos = nil; dragging = false; hotIdx = nil; edgeDir = 0 }
-        .onChange(of: model.config.defaultID) { old, new in defaultChanged(from: old, to: new) }
+        .onChange(of: model.config.defaultID(tool)) { old, new in defaultChanged(from: old, to: new) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Default account")
         .accessibilityValue(list.isEmpty ? "None" : "\(list[min(activeIdx, list.count - 1)].name), \(activeIdx + 1) of \(list.count)")
@@ -617,7 +619,7 @@ private struct HarborScrollCatcher: NSViewRepresentable {
 
     private func commit(_ i: Int) {
         let list = berths
-        guard list.indices.contains(i), list[i].id != model.config.defaultID else { return }
+        guard list.indices.contains(i), list[i].id != model.config.defaultID(tool) else { return }
         selfCommit = list[i].id
         model.setDefault(list[i].id)
     }

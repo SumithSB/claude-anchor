@@ -244,6 +244,18 @@ A running session keeps its account. Continuing starts a new process under the o
 
 Bypass the shell function with `CLAUDE_ANCHOR_OFF=1` or by exporting `CLAUDE_CONFIG_DIR`. `anchor-which` prints what the current folder resolves to.
 
+## Codex
+
+Claude Anchor can also route the Codex CLI (`codex`) and the Codex extension in VS Code. Codex support is macOS only for now.
+
+- **Codex accounts are separate berths.** Each one has its own default and its own folder rules. A Claude rule and a Codex rule can name the same folder. The **Claude | Codex** switch above the harbor chooses which tool's accounts the harbor shows.
+- **Your existing `~/.codex` is the Codex primary.** It keeps its login, history and config. Nothing is moved.
+- **Terminal routing.** In zsh, `codex` runs with `CODEX_HOME` set to the folder that the Codex rules choose for the current folder. The primary runs with `~/.codex`. Bypass the routing with `CLAUDE_ANCHOR_OFF=1`, or by setting `CODEX_HOME` yourself. `anchor-which --codex` prints the folder that `codex` uses in the current folder, or `primary`.
+- **New Codex accounts** live in `~/.claude-anchor/codex-accounts/<id>`. Their `config.toml`, `AGENTS.md`, `skills`, `rules` and `hooks.json` are symlinks to the same files in `~/.codex`, so those settings are shared. Logins and history are never shared. Codex may replace the `config.toml` link with its own copy when it saves settings. After that, the copy is no longer shared.
+- **Limits and usage** come from the session files that Codex writes in each account folder. The app makes no network call for Codex. A Codex account's limits update only when Codex runs on that account.
+- **Removing a Codex account** signs it out (`codex logout`), deletes its `auth.json` sign-in file, and only then moves the folder to the Trash. The sign-in token does not end up in the Trash.
+- **VS Code and Cursor.** Settings has a switch, "VS Code Codex follows the Codex default", which is off by default. When it is on, the Codex extension uses the Codex default account for the whole Mac. The change applies after you reload the window. Folder rules don't apply inside VS Code. The first change backs up `settings.json` as `settings.json.anchor-backup`, as the Claude setting does.
+
 ## Command line (Windows and Linux)
 
 The `anchor` CLI is installed to `~/.claude-anchor/bin/anchor` (`%USERPROFILE%\.claude-anchor\bin\anchor.exe` on Windows). The installer does not add that folder to your PATH, so use the full path or add the folder yourself. The CLI and the tray app read and write the same files, so a change made in one shows in the other.
@@ -291,10 +303,12 @@ No telemetry. The only network traffic is to the usage endpoint on `api.anthropi
 
 | Path | Purpose |
 | --- | --- |
-| `~/.claude-anchor/` | config (including `config.json`), routes, usage history, shell shim, editor wrapper |
+| `~/.claude-anchor/` | config (including `config.json`), routes and `codex-routes`, usage history, shell shim, editor wrappers |
 | `~/.claude-anchor/accounts/` | one config dir per extra account |
+| `~/.claude-anchor/codex-accounts/` | one folder per extra Codex account (its sign-in file and history) |
+| `~/.codex/` | read only; its `config.toml`, `AGENTS.md`, `skills`, `rules` and `hooks.json` are symlinked into Codex accounts |
 | `~/.zshrc` | one marked line, added by the installer |
-| VS Code / Cursor `settings.json` | `claudeCode.claudeProcessWrapper`, set on first launch, removed when you turn it off (backup: `settings.json.anchor-backup`) |
+| VS Code / Cursor `settings.json` | `claudeCode.claudeProcessWrapper`, set on first launch, removed when you turn it off (backup: `settings.json.anchor-backup`). `chatgpt.cliExecutable`, only if you turn on the Codex option |
 | `~/.claude/` | read only (transcripts); settings, skills and plugins are symlinked from it |
 | Keychain | read only, Claude Code's own items |
 
@@ -329,7 +343,7 @@ The macOS list above is the full set. Windows and Linux touch these paths instea
 curl -fsSL https://raw.githubusercontent.com/SumithSB/claude-anchor/main/uninstall.sh | bash
 ```
 
-It removes the app, the `~/.zshrc` line and the editor setting (with backups), then asks before deleting `~/.claude-anchor`. Extra accounts' history lives in `~/.claude-anchor/accounts`, and their Keychain logins stay until removed in the app or with `security delete-generic-password -s "Claude Code-credentials-<hash>"`. `~/.claude` is never touched.
+It removes the app, the `~/.zshrc` line and the editor settings for Claude and Codex (with backups), then asks before deleting `~/.claude-anchor`. Extra accounts' history lives in `~/.claude-anchor/accounts`, and their Keychain logins stay until removed in the app or with `security delete-generic-password -s "Claude Code-credentials-<hash>"`. Codex accounts' sign-in files are in `~/.claude-anchor/codex-accounts`. Deleting that folder removes the files but does not log those accounts out, so remove the accounts in the app first if you want them signed out. `~/.claude` is never touched.
 
 ### Windows
 
@@ -355,12 +369,16 @@ Removes the app, the `.desktop` entries, the autostart entry, the shell hook lin
 - Accounts are picked per folder, so two VS Code windows on the same folder always use the same account. VS Code's Claude settings are machine-wide, so there's no per-window override. To work on one repo with two accounts, open a [git worktree](https://git-scm.com/docs/git-worktree) of it in the second window and add a folder rule for the worktree's path.
 - Ad-hoc signed, not notarized. The installer clears the quarantine flag; a manually downloaded zip may need right-click, Open.
 - Windows and Linux builds are unsigned, and are newer than the macOS app. Please report tray, window placement or terminal problems as issues.
+- Codex in VS Code follows one account, not folder rules. The extension starts Codex without the workspace folder, so the app can't tell which folder is open.
+- No conversation sync and no Continue for Codex. A Codex conversation stays with the account that ran it.
+- Codex logins kept in the Keychain (`cli_auth_credentials_store = "keyring"`) show as signed out, because the app reads Codex limits from `auth.json`.
+- Codex support is macOS only for now.
 
 ## Roadmap
 
 Planned, not yet supported:
 
-- **Other coding agents:** Codex CLI, Gemini CLI, Cursor Agent and other agent CLIs, with the same folder rules and usage view.
+- **Other coding agents:** Gemini CLI, Cursor Agent and other agent CLIs, with the same folder rules and usage view.
 - **Other providers:** OpenAI, Google and other model providers' accounts and API keys, side by side with Claude accounts.
 
 Ideas and pull requests are welcome in [Issues](https://github.com/SumithSB/claude-anchor/issues).

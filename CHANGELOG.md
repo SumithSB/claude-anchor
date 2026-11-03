@@ -2,6 +2,26 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2026-11-03
+
+### Added
+
+- **Codex accounts (macOS).** Add ChatGPT accounts for the Codex CLI next to your Claude accounts. Codex accounts have their own default and folder rules, switched with **Claude | Codex** above the harbor.
+- **`codex` is routed by folder** in zsh, the same way `claude` is. `anchor-which --codex` shows which account `codex` would use in a folder.
+- **Codex limits and usage** from Codex's own session files on this Mac. The app makes no network call for Codex. Limits update when Codex runs on that account.
+- **VS Code and Cursor, opt-in.** A setting makes the Codex extension use the Codex default account. It applies after you reload the window. Folder rules don't apply inside VS Code.
+
+### Changed
+
+- Uninstall removes the Codex setting from VS Code and Cursor, but only when it points at Claude Anchor's Codex wrapper. Codex account folders are kept, like `~/.claude-anchor`.
+
+### Security
+
+- Removing a Codex account signs it out and deletes its sign-in file before the folder goes to the Trash, so no refresh token ends up there.
+- Only token counts, the folder and the model are kept from Codex's session files. Conversation text is never stored.
+- Codex sign-in tokens never leave `auth.json`. The app shows only the email, plan and account ID.
+- A Codex account folder links only `config.toml`, `AGENTS.md`, `skills`, `rules` and `hooks.json` from `~/.codex`. Logins and history are never shared.
+
 ## [0.6.2] - 2026-11-02
 
 ### Fixed

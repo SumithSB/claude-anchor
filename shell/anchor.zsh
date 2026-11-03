@@ -5,12 +5,13 @@
 # Routes file lines:  <abs-folder>\t<config-dir or ->   ("-" = primary account, CLAUDE_CONFIG_DIR unset)
 #                     default\t<config-dir or ->
 # Bypass: CLAUDE_ANCHOR_OFF=1, or an existing CLAUDE_CONFIG_DIR export in this shell.
+# `codex` is routed the same way from codex-routes (CODEX_HOME instead of CLAUDE_CONFIG_DIR); no conversation sync.
 
-# _anchor_resolve [dir] -> sets REPLY to the config dir for dir (default $PWD), or "-" for primary.
+# _anchor_resolve [dir] [routes-file] -> sets REPLY to the config dir for dir (default $PWD), or "-" for primary.
 _anchor_resolve() {
   emulate -L zsh
   local dir=${1:-$PWD}
-  local routes=${CLAUDE_ANCHOR_ROUTES:-$HOME/.claude-anchor/routes}
+  local routes=${2:-${CLAUDE_ANCHOR_ROUTES:-$HOME/.claude-anchor/routes}}
   local line p cfg def_cfg=- best_cfg=- best_len=-1
   local -a lines
   REPLY=-
@@ -120,9 +121,23 @@ claude() {
   fi
 }
 
-# anchor-which [dir] -> prints the config dir that `claude` would use, or "primary".
+# codex -> same routing for the Codex CLI: CODEX_HOME from codex-routes ("-" = primary, ~/.codex, CODEX_HOME unset).
+codex() {
+  local routes=${CLAUDE_ANCHOR_CODEX_ROUTES:-$HOME/.claude-anchor/codex-routes}
+  if [[ -n ${CLAUDE_ANCHOR_OFF:-} || -n ${CODEX_HOME:-} || ! -r $routes ]]; then
+    command codex "$@"
+    return
+  fi
+  _anchor_resolve "$PWD" "$routes"
+  local cfg=$REPLY
+  if [[ $cfg == - ]]; then command codex "$@"; else CODEX_HOME=$cfg command codex "$@"; fi
+}
+
+# anchor-which [--codex] [dir] -> prints the config dir that `claude` (or `codex`) would use, or "primary".
 anchor-which() {
-  _anchor_resolve "${1:-$PWD}"
+  local routes=
+  if [[ ${1:-} == --codex ]]; then routes=${CLAUDE_ANCHOR_CODEX_ROUTES:-$HOME/.claude-anchor/codex-routes}; shift; fi
+  _anchor_resolve "${1:-$PWD}" $routes
   if [[ $REPLY == - ]]; then print -r -- primary; else print -r -- "$REPLY"; fi
 }
 
@@ -201,6 +216,24 @@ printf "%s|%s|%s\n" "${CLAUDE_CONFIG_DIR--}" "${CLAUDE_ANCHOR_ACCOUNT-}" "$*"' >
     # claude() must hold on to the account itself, not rely on _anchor_sync keeping REPLY.
     _anchor_sync() { REPLY=clobbered }
     _anchor_want "$(run $T/w/plain)" "$W|work|--x" "claude() with a sync that sets REPLY"
+    # Codex: own routes file, CODEX_HOME instead of CLAUDE_CONFIG_DIR, and claude is untouched by it.
+    export CLAUDE_ANCHOR_CODEX_ROUTES=$HOME/.claude-anchor/codex-routes
+    print -r -- '#!/bin/sh
+printf "%s|%s" "${CODEX_HOME--}" "$*"' > $T/bin/codex
+    chmod +x $T/bin/codex
+    X=$HOME/.claude-anchor/accounts/cx
+    runx() { (cd -- $1 && codex --y) }
+    printf '%s\t%s\n' $T/p - default $X > $CLAUDE_ANCHOR_CODEX_ROUTES
+    _anchor_want "$(runx $T/w/plain)" "$X|--y" "codex default route"
+    _anchor_want "$(runx $T/p/sub)" "-|--y" "codex rule to the primary"
+    _anchor_want "$(run $T/w/plain)" "$W|work|--x" "claude routing unchanged with a codex-routes present"
+    _anchor_want "$(anchor-which --codex $T/w/plain)" "$X" "anchor-which --codex"
+    _anchor_want "$(anchor-which --codex $T/p/sub)" primary "anchor-which --codex, primary"
+    _anchor_want "$(anchor-which $T/w/plain)" "$W" "anchor-which stays on claude routes"
+    _anchor_want "$(export CODEX_HOME=/elsewhere; runx $T/w/plain)" "/elsewhere|--y" "CODEX_HOME already set"
+    _anchor_want "$(export CLAUDE_ANCHOR_OFF=1; runx $T/w/plain)" "-|--y" "CLAUDE_ANCHOR_OFF, codex"
+    rm -f $CLAUDE_ANCHOR_CODEX_ROUTES
+    _anchor_want "$(runx $T/w/plain)" "-|--y" "no codex-routes: plain codex"
     exit $_anchor_fail
   ) || _anchor_fail=1
   rm -rf "$_anchor_tmp"

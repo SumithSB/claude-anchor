@@ -162,17 +162,18 @@ enum FlagArt {
     @State private var draft = ""
     @State private var flagFor: String?
     @State private var removing: Account?
-    @State private var signOut = false
+    @State private var signOut: Tool?
     @State private var adding = false
     @State private var newName = ""
     @State private var newFlag = SignalFlag.a
     @State private var showNewFlags = false
+    @State private var newTool = Tool.claude
 
-    private var used: Set<SignalFlag> { Set(model.accounts.map(\.flag)) }
+    private func used(_ t: Tool) -> Set<SignalFlag> { Set(model.config.accounts(t).map(\.flag)) }
 
     var body: some View {
         PaneScaffold(title: "Accounts") {
-            PaneSection(title: "Signed in", footer: "New sessions start on the default account. Use ⋯ to rename, change the flag or reorder.") {
+            PaneSection(title: model.codexAccounts.isEmpty ? "Signed in" : "Claude", footer: "New sessions start on the default account. Use ⋯ to rename, change the flag or reorder.") {
                 ForEach(Array(model.accounts.enumerated()), id: \.element.id) { i, a in
                     if i > 0 { RowDivider() }
                     row(a, index: i)
@@ -180,7 +181,7 @@ enum FlagArt {
                 if !adding {
                     RowDivider()
                     Button {
-                        newName = ""; newFlag = SignalFlag.allCases.first { !used.contains($0) } ?? .a; adding = true
+                        newName = ""; newTool = .claude; newFlag = SignalFlag.allCases.first { !used(.claude).contains($0) } ?? .a; adding = true
                     } label: {
                         Label("Add account", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
                             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
@@ -188,11 +189,20 @@ enum FlagArt {
                     .buttonStyle(.plain)
                 }
             }
+            if !model.codexAccounts.isEmpty {
+                PaneSection(title: "Codex") {
+                    ForEach(Array(model.codexAccounts.enumerated()), id: \.element.id) { i, a in
+                        if i > 0 { RowDivider() }
+                        row(a, index: i)
+                    }
+                }
+            }
             if adding { PaneSection(title: "New account") { addForm.padding(.vertical, 10) } }
         }
         .sheet(item: $removing) { RemoveSheet(account: $0) }
-        .confirmationDialog("Sign out of Claude Code?", isPresented: $signOut) {
-            Button("Sign out", role: .destructive) { model.signOutPrimary() }
+        .confirmationDialog(signOut == .codex ? "Sign out of Codex?" : "Sign out of Claude Code?",
+                            isPresented: Binding(get: { signOut != nil }, set: { if !$0 { signOut = nil } })) {
+            Button("Sign out", role: .destructive) { if signOut == .codex { model.signOutCodexPrimary() } else { model.signOutPrimary() } }
         }
     }
 
@@ -229,32 +239,40 @@ enum FlagArt {
                 Button("Rename") { draft = a.name; editing = a.id }
                 Button("Change flag") { flagFor = a.id }
                 Button("Sign in again") { model.signIn(a.id) }
-                if i > 0 { Button("Move up") { model.moveAccounts(fromOffsets: [i], toOffset: i - 1) } }
-                if i < model.accounts.count - 1 { Button("Move down") { model.moveAccounts(fromOffsets: [i], toOffset: i + 2) } }
+                if a.kind == .claude, i > 0 { Button("Move up") { model.moveAccounts(fromOffsets: [i], toOffset: i - 1) } }
+                if a.kind == .claude, i < model.accounts.count - 1 { Button("Move down") { model.moveAccounts(fromOffsets: [i], toOffset: i + 2) } }
                 Divider()
-                if a.isPrimary { Button("Sign out") { signOut = true } }
-                else { Button("Remove \(a.name)", role: .destructive) { removing = a } }
+                if a.isPrimary { Button("Sign out") { signOut = a.kind } }
+                else { Button("Remove \(a.name)", role: .destructive) { removing = a }
+                    .disabled(a.kind == .codex && model.codexAccounts.count < 2) }
             }
         }
         .padding(.vertical, 9)
         .popover(isPresented: Binding(get: { flagFor == a.id }, set: { if !$0 { flagFor = nil } })) {
-            FlagGrid(flag: Binding(get: { a.flag }, set: { model.setFlag(a.id, $0); flagFor = nil }), used: used)
+            FlagGrid(flag: Binding(get: { a.flag }, set: { model.setFlag(a.id, $0); flagFor = nil }), used: used(a.kind))
         }
     }
 
     private var addForm: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Seg(label: "Tool", options: [("Claude", Tool.claude), ("Codex", Tool.codex)],
+                selection: Binding(get: { newTool }, set: { t in
+                    newTool = t
+                    if used(t).contains(newFlag) { newFlag = SignalFlag.allCases.first { !used(t).contains($0) } ?? newFlag }
+                }),
+                fill: true, isEnabled: { $0 == .claude || model.codexInstalled })
+            if !model.codexInstalled { Text("Install Codex first").font(.system(size: 11)).foregroundStyle(.secondary) }
             HStack {
                 TextField("Account name", text: $newName).textFieldStyle(.roundedBorder)
                 Button { showNewFlags = true } label: { FlagView(flag: newFlag, size: 16) }.buttonStyle(.borderless)
-                    .popover(isPresented: $showNewFlags) { FlagGrid(flag: Binding(get: { newFlag }, set: { newFlag = $0; showNewFlags = false }), used: used) }
+                    .popover(isPresented: $showNewFlags) { FlagGrid(flag: Binding(get: { newFlag }, set: { newFlag = $0; showNewFlags = false }), used: used(newTool)) }
                     .accessibilityLabel("Flag \(newFlag.letter), change")
             }
             HStack {
                 Button("Cancel") { adding = false }
                 Spacer()
                 Button("Sign in with browser") {
-                    model.addAccount(name: newName.trimmingCharacters(in: .whitespaces), flag: newFlag)
+                    model.addAccount(name: newName.trimmingCharacters(in: .whitespaces), flag: newFlag, tool: newTool)
                     adding = false
                 }.disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction)
             }
@@ -269,7 +287,7 @@ enum FlagArt {
     @State private var target = ""
 
     var body: some View {
-        let others = model.accounts.filter { $0.id != account.id }
+        let others = model.config.accounts(account.kind).filter { $0.id != account.id }
         VStack(alignment: .leading, spacing: 10) {
             Text("Remove \(account.name)").font(.system(size: 13, weight: .semibold))
             Text("Its config folder moves to the Trash. Usage already logged stays in your history.")
@@ -281,10 +299,10 @@ enum FlagArt {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Remove \(account.name)", role: .destructive) { model.removeAccount(account.id, reassignTo: target); dismiss() }
-                    .disabled(target.isEmpty && !others.isEmpty)
+                    .disabled(target.isEmpty && (!others.isEmpty || account.kind == .codex))
             }
         }
         .padding(16).frame(width: 320)
-        .onAppear { target = others.contains { $0.id == model.config.defaultID } ? model.config.defaultID : (others.first?.id ?? "") }
+        .onAppear { target = others.contains { $0.id == model.config.defaultID(account.kind) } ? model.config.defaultID(account.kind) : (others.first?.id ?? "") }
     }
 }

@@ -8,6 +8,7 @@ Contents:
 - [First run](#first-run)
 - [The menu](#the-menu)
 - [Adding accounts](#adding-accounts)
+- [Adding a Codex account](#adding-a-codex-account)
 - [Switching the default account](#switching-the-default-account)
 - [Folder rules and overflow](#folder-rules-and-overflow)
 - [Reading the rings](#reading-the-rings)
@@ -69,6 +70,27 @@ Settings has four cards:
 3. The account appears as a berth in the harbor switcher. Its limits start showing after the next refresh.
 
 Each account's login is kept by Claude Code itself: in the Keychain on macOS, in the account's `.credentials.json` on Windows and Linux. Use an account's ⋯ menu to rename it, change its flag, reorder it with **Move up** and **Move down**, or remove it. Its history stays in `~/.claude-anchor/accounts/` until you delete it.
+
+## Adding a Codex account
+
+Codex accounts work like Claude accounts, with their own default and folder rules. Codex support is macOS only for now.
+
+1. Install the Codex CLI (`codex`), or the Codex extension in VS Code or Cursor. The app looks for the CLI in `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`, on your login shell's PATH, and in the Codex extension folder of VS Code or Cursor.
+2. Open the menu, choose **Accounts**, then click **Add account**. Choose **Codex** as the type. If Codex is unavailable with "Install Codex first", the app can't find the CLI. Install it, then try again.
+3. Sign in. The app runs `codex login`, which opens the sign-in page in your browser. Finish it there. Only one Codex sign-in runs at a time, so finish any other Codex sign-in first.
+4. Add folder rules for Codex. Open **Rules** and use the Codex list, under its own Codex heading. Add folders as in [Folder rules and overflow](#folder-rules-and-overflow). A Codex rule uses a Codex account, and a Claude rule for the same folder is separate.
+5. To change the Codex default, select **Codex** above the harbor, then drag the anchor onto a berth or click one.
+
+If `~/.codex` is already signed in, it appears as the Codex account on its own. It is the Codex primary, and it keeps its login and history.
+
+### Use Codex in VS Code and Cursor
+
+The Codex extension can't follow folder rules. It can follow the Codex default account instead.
+
+1. Open **Settings** and turn on **VS Code Codex follows the Codex default**. It is off by default. The first change backs up `settings.json` as `settings.json.anchor-backup`.
+2. Reload the window so the change applies. In VS Code, run **Developer: Reload Window**.
+
+With the setting on, every VS Code window uses the Codex default account, because folder rules don't apply inside VS Code. Changing the Codex default also takes effect after a reload.
 
 ## Switching the default account
 
@@ -235,4 +257,4 @@ To fix it, use the account once: start `claude` in a folder routed to it, or cli
 
 ### Uninstall
 
-Use the uninstall command in the [README](../README.md#uninstall). It removes the app, the `~/.zshrc` line and the editor setting, and asks before it deletes `~/.claude-anchor`. Your `~/.claude` folder is not changed.
+Use the uninstall command in the [README](../README.md#uninstall). It removes the app, the `~/.zshrc` line and the editor settings for Claude and Codex, and asks before it deletes `~/.claude-anchor`. Your `~/.claude` folder is not changed.
