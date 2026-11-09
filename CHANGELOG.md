@@ -2,6 +2,13 @@
 
 All notable changes to Claude Anchor are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.3] - 2026-11-09
+
+### Fixed
+
+- macOS: removing an account from the menu bar panel didn't work. **Remove** in the Accounts pane, and **Sign out** on the main account, now ask for confirmation inside the panel instead of in a separate window.
+- Includes everything in 0.6.2, which was not published as its own release.
+
 ## [0.6.2] - 2026-11-02
 
 ### Fixed
