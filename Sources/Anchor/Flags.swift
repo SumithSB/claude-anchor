@@ -173,37 +173,53 @@ enum FlagArt {
 
     var body: some View {
         PaneScaffold(title: "Accounts") {
+            if adding { PaneSection(title: "New account") { addForm.padding(.vertical, 10) } }
+            // Inline, not a sheet or dialog: those open a second window, and the menu bar window closes when it loses focus.
+            if let a = removing {
+                PaneSection(title: "Remove \(a.name)") { RemoveForm(account: a) { removing = nil }.id(a.id).padding(.vertical, 10) }
+            }
+            if let t = signOut {
+                PaneSection(title: t == .codex ? "Sign out of Codex?" : "Sign out of Claude Code?") {
+                    HStack {
+                        Spacer()
+                        Button("Cancel") { signOut = nil }
+                        Button("Sign out", role: .destructive) {
+                            if t == .codex { model.signOutCodexPrimary() } else { model.signOutPrimary() }
+                            signOut = nil
+                        }
+                    }.controlSize(.small).padding(.vertical, 10)
+                }
+            }
             PaneSection(title: model.codexAccounts.isEmpty ? "Signed in" : "Claude", footer: "New sessions start on the default account. Use ⋯ to rename, change the flag or reorder.") {
                 ForEach(Array(model.accounts.enumerated()), id: \.element.id) { i, a in
                     if i > 0 { RowDivider() }
                     row(a, index: i)
                 }
-                if !adding {
-                    RowDivider()
-                    Button {
-                        newName = ""; newTool = .claude; newFlag = SignalFlag.allCases.first { !used(.claude).contains($0) } ?? .a; adding = true
-                    } label: {
-                        Label("Add account", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
-                            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+                if !adding { RowDivider(); addRow(.claude) }
             }
-            if !model.codexAccounts.isEmpty {
+            if !model.codexAccounts.isEmpty || model.codexInstalled {
                 PaneSection(title: "Codex") {
                     ForEach(Array(model.codexAccounts.enumerated()), id: \.element.id) { i, a in
                         if i > 0 { RowDivider() }
                         row(a, index: i)
                     }
+                    if !adding {
+                        if !model.codexAccounts.isEmpty { RowDivider() }
+                        addRow(.codex)
+                    }
                 }
             }
-            if adding { PaneSection(title: "New account") { addForm.padding(.vertical, 10) } }
         }
-        .sheet(item: $removing) { RemoveSheet(account: $0) }
-        .confirmationDialog(signOut == .codex ? "Sign out of Codex?" : "Sign out of Claude Code?",
-                            isPresented: Binding(get: { signOut != nil }, set: { if !$0 { signOut = nil } })) {
-            Button("Sign out", role: .destructive) { if signOut == .codex { model.signOutCodexPrimary() } else { model.signOutPrimary() } }
+    }
+
+    private func addRow(_ t: Tool) -> some View {
+        Button {
+            newName = ""; newTool = t; newFlag = SignalFlag.allCases.first { !used(t).contains($0) } ?? .a; adding = true
+        } label: {
+            Label("Add account", systemImage: "plus").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Clay.accentText)
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading).contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private func row(_ a: Account, index i: Int) -> some View {
@@ -280,29 +296,28 @@ enum FlagArt {
     }
 }
 
-@MainActor struct RemoveSheet: View {
+@MainActor struct RemoveForm: View {
     let account: Account
+    let done: () -> Void
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
     @State private var target = ""
 
     var body: some View {
         let others = model.config.accounts(account.kind).filter { $0.id != account.id }
         VStack(alignment: .leading, spacing: 10) {
-            Text("Remove \(account.name)").font(.system(size: 13, weight: .semibold))
             Text("Its config folder moves to the Trash. Usage already logged stays in your history.")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Picker("Move its folder rules to", selection: $target) {
                 ForEach(others) { Text($0.name).tag($0.id) }
             }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Remove \(account.name)", role: .destructive) { model.removeAccount(account.id, reassignTo: target); dismiss() }
+                Button("Cancel", action: done)
+                Button("Remove \(account.name)", role: .destructive) { model.removeAccount(account.id, reassignTo: target); done() }
                     .disabled(target.isEmpty && (!others.isEmpty || account.kind == .codex))
             }
         }
-        .padding(16).frame(width: 320)
+        .controlSize(.small)
         .onAppear { target = others.contains { $0.id == model.config.defaultID(account.kind) } ? model.config.defaultID(account.kind) : (others.first?.id ?? "") }
     }
 }

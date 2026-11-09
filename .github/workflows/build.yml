@@ -1,7 +1,7 @@
 name: build
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'feat/**']
   workflow_dispatch:
   pull_request:
     branches: [main]

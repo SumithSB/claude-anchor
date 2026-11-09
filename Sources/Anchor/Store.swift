@@ -604,6 +604,12 @@ extension AppModel {
     /// discarded; true when it exited 0.
     @discardableResult
     nonisolated static func codexRun(_ exe: String, _ args: [String], home: String?) -> Bool {
+        // A keyring fallback must not make the CLI follow an auth.json that our reader refused.
+        if Array(args.prefix(2)) == ["login", "status"] {
+            let dir = home ?? Paths.codexPrimaryDir
+            if (try? FileManager.default.attributesOfItem(atPath: dir + "/auth.json")) != nil,
+               codexAuth(dir: dir) == nil { return false }
+        }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
@@ -626,6 +632,7 @@ extension AppModel {
     /// A Codex folder may be removed only if it's a standardized direct child of `root` and not the primary.
     nonisolated static func codexRemovable(_ dir: String, root: String = Paths.codexAccounts) -> Bool {
         (dir as NSString).standardizingPath == dir && (dir as NSString).deletingLastPathComponent == root && dir != Paths.codexPrimaryDir
+            && URL(fileURLWithPath: dir).resolvingSymlinksInPath().path == URL(fileURLWithPath: root).resolvingSymlinksInPath().appendingPathComponent((dir as NSString).lastPathComponent).path
     }
 
     /// Deletes the login so no refresh token travels to the Trash. False if it's still there.
@@ -676,7 +683,19 @@ extension AppModel {
     private func finishSignIn(_ id: String, ok: Bool, cancelled: Bool) {
         AnchorRuntime.logins[id] = nil
         signingIn.remove(id)
-        if let j = config.codexAccounts.firstIndex(where: { $0.id == id }) { finishCodexSignIn(j, ok: ok, cancelled: cancelled); return }
+        if let j = config.codexAccounts.firstIndex(where: { $0.id == id }) {
+            let a = config.codexAccounts[j]
+            if ok && Self.codexAuth(dir: a.dir) == nil {
+                Task.detached {
+                    let authenticated = Self.codexPath().map { Self.codexRun($0, ["login", "status"], home: a.configDirEnv) } ?? false
+                    await MainActor.run {
+                        guard let i = self.config.codexAccounts.firstIndex(where: { $0.id == id }) else { return }
+                        self.finishCodexSignIn(i, ok: ok, cancelled: cancelled, authenticatedByCLI: authenticated)
+                    }
+                }
+            } else { finishCodexSignIn(j, ok: ok, cancelled: cancelled) }
+            return
+        }
         guard let i = config.accounts.firstIndex(where: { $0.id == id }) else { return }
         let name = config.accounts[i].name
         guard ok, let mail = Self.email(of: config.accounts[i]) else {
@@ -698,9 +717,9 @@ extension AppModel {
         Task { await refreshLimits() }
     }
 
-    private func finishCodexSignIn(_ i: Int, ok: Bool, cancelled: Bool) {
+    private func finishCodexSignIn(_ i: Int, ok: Bool, cancelled: Bool, authenticatedByCLI: Bool = false) {
         let a = config.codexAccounts[i]
-        guard ok, let auth = Self.codexAuth(dir: a.dir) else {
+        guard ok, let auth = Self.codexAuth(dir: a.dir) ?? (authenticatedByCLI ? (nil, nil, nil) : nil) else {
             if !cancelled { banner = "Sign-in for \(a.name) didn't finish. Try again." }
             return
         }
@@ -752,7 +771,15 @@ extension AppModel {
         Task.detached {
             let ok = Self.codexRun(exe, ["logout"], home: nil)
             await MainActor.run {
-                if ok { self.limits["codex"] = nil; self.reconcileCodexPrimary() } else { self.banner = "Sign-out didn't finish. Try again." }
+                if ok {
+                    self.limits["codex"] = nil
+                    if let i = self.config.codexAccounts.firstIndex(where: { $0.isPrimary }) {
+                        self.config.codexAccounts[i].email = nil
+                        self.config.codexAccounts[i].plan = nil
+                        self.config.codexAccounts[i].accountID = nil
+                        self.save()
+                    }
+                } else { self.banner = "Sign-out didn't finish. Try again." }
                 self.rescan()
             }
         }
@@ -1017,6 +1044,9 @@ extension AppModel {
         assert(!codexRemovable(root + "/../x", root: root) && !codexRemovable(root + "/work/../work", root: root), "../ is refused")
         assert(!codexRemovable(t + "/elsewhere/work", root: root) && !codexRemovable(root + "/a/b", root: root) && !codexRemovable(root, root: root), "outside or nested is refused")
         assert(!codexRemovable(Paths.codexPrimaryDir, root: (Paths.codexPrimaryDir as NSString).deletingLastPathComponent), "the primary is never removable")
+        let linked = root + "/linked"
+        try! fm.createSymbolicLink(atPath: linked, withDestinationPath: prim)
+        assert(!codexRemovable(linked, root: root), "a symlinked account must never log out or delete another account")
         // auth.json is gone before the folder would be trashed.
         fm.createFile(atPath: dir + "/auth.json", contents: Data("{}".utf8))
         assert(prepareCodexRemoval(dir: dir) && !fm.fileExists(atPath: dir + "/auth.json"), "auth.json deleted first")
@@ -1029,6 +1059,18 @@ extension AppModel {
         assert(codexTwin(accountID: "x", excluding: "b", in: list)?.id == "a", "same account id is a twin")
         assert(codexTwin(accountID: "x", excluding: "a", in: list) == nil, "not its own twin")
         assert(codexTwin(accountID: nil, excluding: "b", in: list) == nil && codexTwin(accountID: "z", excluding: "b", in: list) == nil, "nil or new id: no twin")
+        // The keyring fallback must scope status/logout to the requested account.
+        let cli = t + "/fake-codex"
+        try! "#!/bin/sh\n[ \"$1 $2\" = \"check environment\" ] || exit 2\n[ \"${CODEX_HOME-unset}\" = \"$3\" ]\n".write(toFile: cli, atomically: true, encoding: .utf8)
+        try! fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cli)
+        assert(codexRun(cli, ["check", "environment", "unset"], home: nil), "primary status clears inherited CODEX_HOME")
+        assert(codexRun(cli, ["check", "environment", dir], home: dir), "secondary status gets its own CODEX_HOME")
+        assert(!codexRun(cli, ["logout"], home: nil), "a nonzero CLI exit fails the check")
+        try! "#!/bin/sh\nexit 0\n".write(toFile: cli, atomically: true, encoding: .utf8)
+        try! fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cli)
+        assert(codexRun(cli, ["login", "status"], home: dir), "missing auth.json permits keyring status")
+        try! fm.createSymbolicLink(atPath: dir + "/auth.json", withDestinationPath: prim + "/auth.json")
+        assert(!codexRun(cli, ["login", "status"], home: dir), "keyring fallback must not follow a refused auth symlink")
         // Editor setting for the Codex key.
         let key = codexWrapperKey, ours = "/Users/u/.claude-anchor/bin/codex-wrapper", suf = "/.claude-anchor/bin/codex-wrapper"
         let ins = setSetting(in: "{\n}", key: key, path: ours, ourSuffix: suf)!

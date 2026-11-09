@@ -252,10 +252,15 @@ extension AppModel {
         AnchorRuntime.limitsAttempted = true
         for (id, l) in results { limits[id] = l }
         // Codex: local numbers only. Never the Anthropic endpoint or the Keychain.
-        // ponytail: file logins only; a keyring-mode login (no auth.json) reads as signed out until `codex login status` is wired in.
         let now = Date()
         for a in codexAccounts where !a.pending {
-            limits[a.id] = Self.codexAuth(dir: a.dir) == nil
+            let signedIn = await Task.detached {
+                if Self.codexAuth(dir: a.dir) != nil { return true }
+                guard let exe = Self.codexPath() else { return false }
+                return Self.codexRun(exe, ["login", "status"], home: a.configDirEnv)
+            }.value
+            guard codexAccounts.contains(where: { $0.id == a.id && !$0.pending }) else { continue }
+            limits[a.id] = !signedIn
                 ? Limits(fiveHour: nil, weekly: nil, fetchedAt: now, error: "\(a.name) isn't signed in to Codex.", needsSignIn: true)
                 : Self.codexLimits(usage.codexLimits(for: a.id), now: now)
         }

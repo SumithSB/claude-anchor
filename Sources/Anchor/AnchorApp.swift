@@ -113,6 +113,8 @@ extension AppModel {
         shoot(six, dark: false, to: prefix + "-rules.png", view: AnyView(RulesPane()))
         shoot(three, dark: false, to: prefix + "-settings.png", view: AnyView(SettingsPane()))
         let both = withCodex(), d = UserDefaults.standard
+        let previousTool = d.object(forKey: "harborTool")
+        defer { if let previousTool { d.set(previousTool, forKey: "harborTool") } else { d.removeObject(forKey: "harborTool") } }
         d.set("claude", forKey: "harborTool"); shoot(both, dark: false, to: prefix + "-tool-claude.png")
         d.set("codex", forKey: "harborTool"); shoot(both, dark: false, to: prefix + "-tool-codex.png")
         shoot(both, dark: false, to: prefix + "-accounts-codex.png", view: AnyView(AccountsPane()))

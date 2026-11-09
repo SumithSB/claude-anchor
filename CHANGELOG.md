@@ -15,8 +15,15 @@ All notable changes to Claude Anchor are recorded here. The format follows [Keep
 
 - Uninstall removes the Codex setting from VS Code and Cursor, but only when it points at Claude Anchor's Codex wrapper. Codex account folders are kept, like `~/.claude-anchor`.
 
+### Fixed
+
+- Codex keyring-backed logins are checked with `codex login status` when no sign-in file exists.
+- Signing out of the primary Codex account clears its displayed identity.
+- Removing an account and signing out now confirm inside the panel. They used a separate window, which the menu bar panel closes on.
+
 ### Security
 
+- Symlinked Codex account folders cannot be removed, preventing logout or credential deletion in another folder.
 - Removing a Codex account signs it out and deletes its sign-in file before the folder goes to the Trash, so no refresh token ends up there.
 - Only token counts, the folder and the model are kept from Codex's session files. Conversation text is never stored.
 - Codex sign-in tokens never leave `auth.json`. The app shows only the email, plan and account ID.
