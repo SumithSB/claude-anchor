@@ -23,6 +23,8 @@ Unofficial and not affiliated with Anthropic. Free, MIT licensed. macOS 14+, Win
 - **fish and cmd.exe.** On Linux, `claude` is routed in fish as well as bash and zsh. On Windows, it is routed in cmd.exe as well as PowerShell.
 - **Long folder paths on macOS.** Conversations in folders with paths over 200 characters are shared between accounts like any other.
 - **Fresh card on Windows and Linux** matches the Mac: one row of account chips.
+- **The usage dial stays put** (0.6.2). After sleep or a network change, the last known numbers stay on screen with a note instead of the dial disappearing.
+- **Removing an account works from the menu bar** (0.6.3). Remove and Sign out now confirm inside the panel.
 
 ## What's new in 0.5
 
